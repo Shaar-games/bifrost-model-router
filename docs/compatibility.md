@@ -16,9 +16,9 @@ The initial polyfill rejects features that cannot be represented safely:
 
 Adapters are selected by configuration, not provider name. `openai-chat`
 validates the common Chat-compatible subset. `strict-text-only` makes modality
-loss explicit. `single-system-message` is the extension point for backends that
-need instruction normalization; Bifrost remains responsible for wire
-conversion.
+loss explicit. `single-system-message` hoists every textual system/developer
+message into top-level instructions while preserving all other input order;
+Bifrost remains responsible for wire conversion.
 
 CI exercises native and polyfilled non-streaming requests, streamed Responses
 event ordering, one terminal completion, and distinct canary credentials at

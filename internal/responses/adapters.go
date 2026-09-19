@@ -2,6 +2,7 @@ package responses
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/maximhq/bifrost/core/schemas"
 )
@@ -26,7 +27,7 @@ func Get(name string) (Adapter, bool) {
 	case "openai-chat":
 		return chatAdapter{name: name}, true
 	case "single-system-message":
-		return chatAdapter{name: name}, true
+		return singleSystemAdapter{}, true
 	case "strict-text-only":
 		return chatAdapter{name: name}, true
 	default:
@@ -43,6 +44,46 @@ func (nativeAdapter) Validate(*schemas.BifrostResponsesRequest) *CompatibilityEr
 func (nativeAdapter) Normalize(*schemas.BifrostResponsesRequest) *CompatibilityError { return nil }
 
 type chatAdapter struct{ name string }
+
+type singleSystemAdapter struct{}
+
+func (singleSystemAdapter) Name() string { return "single-system-message" }
+
+func (singleSystemAdapter) Validate(req *schemas.BifrostResponsesRequest) *CompatibilityError {
+	return chatAdapter{name: "single-system-message"}.Validate(req)
+}
+
+func (a singleSystemAdapter) Normalize(req *schemas.BifrostResponsesRequest) *CompatibilityError {
+	if err := a.Validate(req); err != nil {
+		return err
+	}
+	parts := make([]string, 0, len(req.Input)+1)
+	if req.Params != nil && req.Params.Instructions != nil && *req.Params.Instructions != "" {
+		parts = append(parts, *req.Params.Instructions)
+	}
+	remaining := make([]schemas.ResponsesMessage, 0, len(req.Input))
+	for _, message := range req.Input {
+		if !isInstructionMessage(message) {
+			remaining = append(remaining, message)
+			continue
+		}
+		text, ok := instructionText(message.Content)
+		if !ok {
+			return compatError("unsupported_instruction_content", "system and developer messages must contain only text for the single-system-message adapter")
+		}
+		parts = append(parts, text)
+	}
+	if len(remaining) == len(req.Input) {
+		return nil
+	}
+	if req.Params == nil {
+		req.Params = &schemas.ResponsesParameters{}
+	}
+	merged := strings.Join(parts, "\n\n")
+	req.Params.Instructions = &merged
+	req.Input = remaining
+	return nil
+}
 
 func (a chatAdapter) Name() string { return a.name }
 
@@ -90,6 +131,30 @@ func (a chatAdapter) Normalize(req *schemas.BifrostResponsesRequest) *Compatibil
 	// eventual Responses result. Keeping this method a no-op avoids maintaining a
 	// second, subtly divergent mux.
 	return a.Validate(req)
+}
+
+func isInstructionMessage(message schemas.ResponsesMessage) bool {
+	if message.Role == nil || (*message.Role != schemas.ResponsesInputMessageRoleSystem && *message.Role != schemas.ResponsesInputMessageRoleDeveloper) {
+		return false
+	}
+	return message.Type == nil || *message.Type == schemas.ResponsesMessageTypeMessage
+}
+
+func instructionText(content *schemas.ResponsesMessageContent) (string, bool) {
+	if content == nil {
+		return "", false
+	}
+	if content.ContentStr != nil {
+		return *content.ContentStr, true
+	}
+	parts := make([]string, 0, len(content.ContentBlocks))
+	for _, block := range content.ContentBlocks {
+		if block.Type != schemas.ResponsesInputMessageContentBlockTypeText || block.Text == nil {
+			return "", false
+		}
+		parts = append(parts, *block.Text)
+	}
+	return strings.Join(parts, "\n"), true
 }
 
 func compatError(code, message string) *CompatibilityError {
