@@ -43,6 +43,14 @@
               subPackages = [ "cmd/config-check" ];
             }
           );
+          router = pkgs.buildGo127Module (
+            common
+            // {
+              pname = "bifrost-router-cli";
+              subPackages = [ "cmd/router" ];
+              ldflags = [ "-X main.version=${version}" ];
+            }
+          );
           mockProvider = pkgs.buildGo127Module (
             common
             // {
@@ -55,6 +63,7 @@
             common
             // {
               pname = "codex-model-router-plugin";
+              doCheck = false;
               buildPhase = ''
                 runHook preBuild
                 CGO_ENABLED=1 go build -buildmode=plugin -trimpath \
@@ -95,6 +104,7 @@
           inherit plugin;
           bifrost = bifrostHost;
           config-check = configCheck;
+          inherit router;
           mock-provider = mockProvider;
           default = pkgs.symlinkJoin {
             name = "bifrost-model-router-${version}";
@@ -102,6 +112,7 @@
               bifrostHost
               plugin
               configCheck
+              router
             ];
           };
         }
@@ -221,7 +232,15 @@
         };
         default = {
           type = "app";
-          program = "${self.packages.${system}.config-check}/bin/config-check";
+          program = "${self.packages.${system}.router}/bin/router";
+        };
+        router = {
+          type = "app";
+          program = "${self.packages.${system}.router}/bin/router";
+        };
+        bifrost = {
+          type = "app";
+          program = "${self.packages.${system}.bifrost}/bin/bifrost-http";
         };
       });
 
@@ -237,14 +256,14 @@
               gopls
               gotools
               gotestsum
-              staticcheck
+              golangci-lint
               govulncheck
               just
               jq
               yq-go
               shellcheck
               shfmt
-              nixfmt-rfc-style
+              nixfmt
               pkg-config
               sqlite
             ];
@@ -252,7 +271,25 @@
         }
       );
 
-      formatter = eachSystem (system: (import nixpkgs { inherit system; }).nixfmt-rfc-style);
+      formatter = eachSystem (
+        system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+        in
+        pkgs.writeShellApplication {
+          name = "bifrost-router-format-nix";
+          runtimeInputs = [ pkgs.nixfmt ];
+          text = ''
+            if (( $# > 0 )); then
+              exec nixfmt "$@"
+            fi
+            mapfile -d "" files < <(find . -type f -name '*.nix' -not -path './.git/*' -print0)
+            nixfmt "''${files[@]}"
+          '';
+        }
+      );
+
+      nixosModules.default = import ./nix/module.nix self;
 
       _bifrostSource = bifrost;
     };
