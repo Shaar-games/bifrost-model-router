@@ -200,6 +200,16 @@ func validateModel(slug string, m ModelProfile) error {
 	if !validAdapter(m.Adapter) {
 		return fmt.Errorf("model %q has unknown adapter %q", slug, m.Adapter)
 	}
+	if m.ResponsesMode == ResponsesChatPolyfill {
+		if m.Codex.SupportsSearch || m.Codex.SupportsImageDetailOriginal {
+			return fmt.Errorf("model %q advertises native-only capabilities while using chat_polyfill", slug)
+		}
+		for _, modality := range m.Codex.InputModalities {
+			if modality != "text" {
+				return fmt.Errorf("model %q advertises modality %q while using the text-only chat_polyfill", slug, modality)
+			}
+		}
+	}
 	if m.Codex.ContextWindow <= 0 {
 		return fmt.Errorf("model %q context_window must be positive", slug)
 	}

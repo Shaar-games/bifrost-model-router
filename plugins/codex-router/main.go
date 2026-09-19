@@ -9,6 +9,7 @@ import (
 	"github.com/applyinnovations/bifrost-model-router/internal/catalog"
 	"github.com/applyinnovations/bifrost-model-router/internal/config"
 	"github.com/applyinnovations/bifrost-model-router/internal/credentials"
+	responsescompat "github.com/applyinnovations/bifrost-model-router/internal/responses"
 	"github.com/maximhq/bifrost/core/schemas"
 )
 
@@ -99,6 +100,13 @@ func PreLLMHook(ctx *schemas.BifrostContext, req *schemas.BifrostRequest) (*sche
 	case config.ResponsesNative:
 		return req, nil, nil
 	case config.ResponsesChatPolyfill:
+		adapter, ok := responsescompat.Get(resolved.Model.Adapter)
+		if !ok {
+			return req, shortCircuit(500, "invalid_router_config", "configured Responses adapter is not registered"), nil
+		}
+		if compatErr := adapter.Normalize(req.ResponsesRequest); compatErr != nil {
+			return req, shortCircuit(400, compatErr.Code, compatErr.Message), nil
+		}
 		ctx.SetValue(schemas.BifrostContextKeyChangeRequestType, schemas.ChatCompletionRequest)
 		return req, nil, nil
 	case config.ResponsesUnsupported:
