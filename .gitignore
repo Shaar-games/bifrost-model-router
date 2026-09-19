@@ -1,0 +1,8 @@
+/result
+/result-*
+/.direnv/
+/.env
+*.so
+*.db
+*.db-shm
+*.db-wal

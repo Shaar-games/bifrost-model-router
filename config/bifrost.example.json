@@ -1,0 +1,39 @@
+{
+  "$schema": "https://www.getbifrost.ai/schema",
+  "version": 2,
+  "config_store": { "enabled": false },
+  "logs_store": { "enabled": false },
+  "client": {
+    "allow_direct_keys": true,
+    "disable_content_logging": true,
+    "enable_logging": true
+  },
+  "providers": {
+    "openai": { "keys": [] },
+    "cerebras": {
+      "keys": [{
+        "name": "cerebras",
+        "value": "env.CEREBRAS_API_KEY",
+        "models": ["*"],
+        "weight": 1
+      }]
+    }
+  },
+  "plugins": [{
+    "enabled": true,
+    "name": "codex-model-router",
+    "path": "./lib/codex-model-router.so",
+    "config": {
+      "version": 1,
+      "instructions_template": "You are a coding agent.",
+      "providers": {
+        "openai": { "credential_mode": "request_passthrough", "responses_mode": "native" },
+        "cerebras": { "credential_mode": "bifrost", "responses_mode": "chat_polyfill", "adapter": "single-system-message" }
+      },
+      "models": {
+        "openai/gpt-example": { "aliases": ["gpt-example"], "codex": { "context_window": 128000 } },
+        "cerebras/example-model": { "aliases": ["example-model"], "codex": { "context_window": 131072 } }
+      }
+    }
+  }]
+}

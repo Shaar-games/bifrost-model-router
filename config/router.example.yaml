@@ -1,0 +1,50 @@
+version: 1
+instructions_template: >-
+  You are a coding agent. Follow the user's instructions and use the available tools carefully.
+
+providers:
+  openai:
+    credential_mode: request_passthrough
+    responses_mode: native
+    adapter: native
+  cerebras:
+    credential_mode: bifrost
+    responses_mode: chat_polyfill
+    adapter: single-system-message
+
+models:
+  openai/gpt-example:
+    aliases: [gpt-example]
+    codex:
+      display_name: OpenAI GPT Example
+      description: Example native OpenAI model; replace with a currently supported model.
+      context_window: 128000
+      effective_context_window_percent: 95
+      default_reasoning_level: medium
+      supported_reasoning_levels:
+        - effort: low
+          description: Fast reasoning
+        - effort: medium
+          description: Balanced reasoning
+        - effort: high
+          description: Deep reasoning
+      input_modalities: [text, image]
+      supports_reasoning_summaries: true
+      supports_verbosity: true
+      supports_image_detail_original: true
+  cerebras/example-model:
+    aliases: [example-model]
+    codex:
+      display_name: Cerebras Example
+      description: Example Chat Completions model exposed through the Responses polyfill.
+      context_window: 131072
+      effective_context_window_percent: 95
+      default_reasoning_level: medium
+      supported_reasoning_levels:
+        - effort: low
+          description: Fast reasoning
+        - effort: medium
+          description: Balanced reasoning
+        - effort: high
+          description: Deep reasoning
+      input_modalities: [text]

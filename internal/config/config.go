@@ -1,0 +1,271 @@
+package config
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"sort"
+	"strings"
+
+	"gopkg.in/yaml.v3"
+)
+
+const CurrentVersion = 1
+
+type CredentialMode string
+
+const (
+	CredentialBifrost            CredentialMode = "bifrost"
+	CredentialRequestPassthrough CredentialMode = "request_passthrough"
+)
+
+type ResponsesMode string
+
+const (
+	ResponsesNative       ResponsesMode = "native"
+	ResponsesChatPolyfill ResponsesMode = "chat_polyfill"
+	ResponsesUnsupported  ResponsesMode = "unsupported"
+)
+
+type Config struct {
+	Version      int                        `json:"version" yaml:"version"`
+	Instructions string                     `json:"instructions_template,omitempty" yaml:"instructions_template,omitempty"`
+	Providers    map[string]ProviderProfile `json:"providers" yaml:"providers"`
+	Models       map[string]ModelProfile    `json:"models" yaml:"models"`
+}
+
+type ProviderProfile struct {
+	CredentialMode CredentialMode `json:"credential_mode" yaml:"credential_mode"`
+	ResponsesMode  ResponsesMode  `json:"responses_mode" yaml:"responses_mode"`
+	Adapter        string         `json:"adapter,omitempty" yaml:"adapter,omitempty"`
+}
+
+type ReasoningLevel struct {
+	Effort      string `json:"effort" yaml:"effort"`
+	Description string `json:"description,omitempty" yaml:"description,omitempty"`
+}
+
+type CodexProfile struct {
+	DisplayName                   string           `json:"display_name,omitempty" yaml:"display_name,omitempty"`
+	Description                   string           `json:"description,omitempty" yaml:"description,omitempty"`
+	ContextWindow                 int64            `json:"context_window,omitempty" yaml:"context_window,omitempty"`
+	EffectiveContextWindowPercent int64            `json:"effective_context_window_percent,omitempty" yaml:"effective_context_window_percent,omitempty"`
+	DefaultReasoningLevel         string           `json:"default_reasoning_level,omitempty" yaml:"default_reasoning_level,omitempty"`
+	SupportedReasoningLevels      []ReasoningLevel `json:"supported_reasoning_levels,omitempty" yaml:"supported_reasoning_levels,omitempty"`
+	InputModalities               []string         `json:"input_modalities,omitempty" yaml:"input_modalities,omitempty"`
+	SupportsReasoningSummaries    bool             `json:"supports_reasoning_summaries,omitempty" yaml:"supports_reasoning_summaries,omitempty"`
+	SupportsVerbosity             bool             `json:"supports_verbosity,omitempty" yaml:"supports_verbosity,omitempty"`
+	SupportsSearch                bool             `json:"supports_search,omitempty" yaml:"supports_search,omitempty"`
+	SupportsImageDetailOriginal   bool             `json:"supports_image_detail_original,omitempty" yaml:"supports_image_detail_original,omitempty"`
+	TruncationLimit               int64            `json:"truncation_limit,omitempty" yaml:"truncation_limit,omitempty"`
+}
+
+type ModelProfile struct {
+	Aliases       []string      `json:"aliases,omitempty" yaml:"aliases,omitempty"`
+	Provider      string        `json:"provider,omitempty" yaml:"provider,omitempty"`
+	ResponsesMode ResponsesMode `json:"responses_mode,omitempty" yaml:"responses_mode,omitempty"`
+	Adapter       string        `json:"adapter,omitempty" yaml:"adapter,omitempty"`
+	Codex         CodexProfile  `json:"codex" yaml:"codex"`
+}
+
+func Decode(r io.Reader) (Config, error) {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return Config{}, fmt.Errorf("read config: %w", err)
+	}
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return Config{}, fmt.Errorf("decode config: %w", err)
+	}
+	if err := cfg.ApplyDefaultsAndValidate(); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+func FromAny(raw any) (Config, error) {
+	if raw == nil {
+		return Config{}, errors.New("plugin config is required")
+	}
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return Config{}, fmt.Errorf("encode plugin config: %w", err)
+	}
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return Config{}, fmt.Errorf("decode plugin config: %w", err)
+	}
+	if err := cfg.ApplyDefaultsAndValidate(); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+func (c *Config) ApplyDefaultsAndValidate() error {
+	if c.Version == 0 {
+		c.Version = CurrentVersion
+	}
+	if c.Version != CurrentVersion {
+		return fmt.Errorf("unsupported config version %d", c.Version)
+	}
+	if len(c.Providers) == 0 {
+		return errors.New("at least one provider is required")
+	}
+	if len(c.Models) == 0 {
+		return errors.New("at least one model is required")
+	}
+
+	for name, provider := range c.Providers {
+		if strings.TrimSpace(name) == "" {
+			return errors.New("provider name cannot be empty")
+		}
+		if provider.CredentialMode == "" {
+			provider.CredentialMode = CredentialBifrost
+		}
+		if provider.ResponsesMode == "" {
+			provider.ResponsesMode = ResponsesNative
+		}
+		if provider.Adapter == "" {
+			if provider.ResponsesMode == ResponsesChatPolyfill {
+				provider.Adapter = "openai-chat"
+			} else {
+				provider.Adapter = "native"
+			}
+		}
+		if err := validateProvider(name, provider); err != nil {
+			return err
+		}
+		c.Providers[name] = provider
+	}
+
+	owned := make(map[string]string)
+	for slug, model := range c.Models {
+		if strings.TrimSpace(slug) == "" || !strings.Contains(slug, "/") {
+			return fmt.Errorf("model %q must use provider/model form", slug)
+		}
+		providerName := model.Provider
+		if providerName == "" {
+			providerName = strings.SplitN(slug, "/", 2)[0]
+			model.Provider = providerName
+		}
+		provider, ok := c.Providers[providerName]
+		if !ok {
+			return fmt.Errorf("model %q references unknown provider %q", slug, providerName)
+		}
+		if model.ResponsesMode == "" {
+			model.ResponsesMode = provider.ResponsesMode
+		}
+		if model.Adapter == "" {
+			model.Adapter = provider.Adapter
+		}
+		applyCodexDefaults(slug, &model.Codex)
+		if err := validateModel(slug, model); err != nil {
+			return err
+		}
+		for _, name := range append([]string{slug}, model.Aliases...) {
+			if previous, exists := owned[name]; exists && previous != slug {
+				return fmt.Errorf("model name or alias %q is owned by both %q and %q", name, previous, slug)
+			}
+			owned[name] = slug
+		}
+		c.Models[slug] = model
+	}
+	return nil
+}
+
+func validateProvider(name string, p ProviderProfile) error {
+	switch p.CredentialMode {
+	case CredentialBifrost:
+	case CredentialRequestPassthrough:
+		if name != "openai" {
+			return fmt.Errorf("provider %q cannot use request_passthrough; only openai is allowed", name)
+		}
+	default:
+		return fmt.Errorf("provider %q has invalid credential_mode %q", name, p.CredentialMode)
+	}
+	if !validResponsesMode(p.ResponsesMode) {
+		return fmt.Errorf("provider %q has invalid responses_mode %q", name, p.ResponsesMode)
+	}
+	if !validAdapter(p.Adapter) {
+		return fmt.Errorf("provider %q has unknown adapter %q", name, p.Adapter)
+	}
+	return nil
+}
+
+func validateModel(slug string, m ModelProfile) error {
+	if !validResponsesMode(m.ResponsesMode) {
+		return fmt.Errorf("model %q has invalid responses_mode %q", slug, m.ResponsesMode)
+	}
+	if !validAdapter(m.Adapter) {
+		return fmt.Errorf("model %q has unknown adapter %q", slug, m.Adapter)
+	}
+	if m.Codex.ContextWindow <= 0 {
+		return fmt.Errorf("model %q context_window must be positive", slug)
+	}
+	if m.Codex.EffectiveContextWindowPercent < 1 || m.Codex.EffectiveContextWindowPercent > 100 {
+		return fmt.Errorf("model %q effective_context_window_percent must be between 1 and 100", slug)
+	}
+	efforts := make(map[string]bool)
+	for _, level := range m.Codex.SupportedReasoningLevels {
+		switch level.Effort {
+		case "minimal", "low", "medium", "high", "xhigh":
+		default:
+			return fmt.Errorf("model %q has invalid reasoning effort %q", slug, level.Effort)
+		}
+		efforts[level.Effort] = true
+	}
+	if !efforts[m.Codex.DefaultReasoningLevel] {
+		return fmt.Errorf("model %q default reasoning level %q is not supported", slug, m.Codex.DefaultReasoningLevel)
+	}
+	return nil
+}
+
+func applyCodexDefaults(slug string, p *CodexProfile) {
+	if p.DisplayName == "" {
+		p.DisplayName = slug
+	}
+	if p.Description == "" {
+		p.Description = p.DisplayName
+	}
+	if p.ContextWindow == 0 {
+		p.ContextWindow = 131072
+	}
+	if p.EffectiveContextWindowPercent == 0 {
+		p.EffectiveContextWindowPercent = 95
+	}
+	if p.DefaultReasoningLevel == "" {
+		p.DefaultReasoningLevel = "medium"
+	}
+	if len(p.SupportedReasoningLevels) == 0 {
+		p.SupportedReasoningLevels = []ReasoningLevel{{Effort: "low", Description: "Fast reasoning"}, {Effort: "medium", Description: "Balanced reasoning"}, {Effort: "high", Description: "Deep reasoning"}}
+	}
+	if len(p.InputModalities) == 0 {
+		p.InputModalities = []string{"text"}
+	}
+	if p.TruncationLimit == 0 {
+		p.TruncationLimit = 10000
+	}
+}
+
+func validResponsesMode(mode ResponsesMode) bool {
+	return mode == ResponsesNative || mode == ResponsesChatPolyfill || mode == ResponsesUnsupported
+}
+
+func validAdapter(adapter string) bool {
+	switch adapter {
+	case "native", "openai-chat", "single-system-message", "strict-text-only":
+		return true
+	default:
+		return false
+	}
+}
+
+func (c Config) ModelNames() []string {
+	names := make([]string, 0, len(c.Models))
+	for name := range c.Models {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
