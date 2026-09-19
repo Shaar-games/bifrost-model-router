@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/applyinnovations/bifrost-model-router/config/router.schema.json",
+  "title": "Bifrost Codex model router configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "providers", "models"],
+  "properties": {
+    "version": { "const": 1 },
+    "instructions_template": { "type": "string" },
+    "providers": { "type": "object", "minProperties": 1, "additionalProperties": { "$ref": "#/$defs/provider" } },
+    "models": { "type": "object", "minProperties": 1, "propertyNames": { "pattern": "^[^/]+/.+$" }, "additionalProperties": { "$ref": "#/$defs/model" } }
+  },
+  "$defs": {
+    "responsesMode": { "enum": ["native", "chat_polyfill", "unsupported"] },
+    "adapter": { "enum": ["native", "openai-chat", "single-system-message", "strict-text-only"] },
+    "provider": {
+      "type": "object", "additionalProperties": false,
+      "required": ["credential_mode", "responses_mode"],
+      "properties": {
+        "credential_mode": { "enum": ["bifrost", "request_passthrough"] },
+        "responses_mode": { "$ref": "#/$defs/responsesMode" },
+        "adapter": { "$ref": "#/$defs/adapter" }
+      }
+    },
+    "reasoningLevel": {
+      "type": "object", "additionalProperties": false, "required": ["effort"],
+      "properties": {
+        "effort": { "enum": ["minimal", "low", "medium", "high", "xhigh"] },
+        "description": { "type": "string" }
+      }
+    },
+    "codex": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "display_name": { "type": "string" },
+        "description": { "type": "string" },
+        "context_window": { "type": "integer", "minimum": 1 },
+        "effective_context_window_percent": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "default_reasoning_level": { "type": "string" },
+        "supported_reasoning_levels": { "type": "array", "items": { "$ref": "#/$defs/reasoningLevel" } },
+        "input_modalities": { "type": "array", "items": { "enum": ["text", "image"] }, "uniqueItems": true },
+        "supports_reasoning_summaries": { "type": "boolean" },
+        "supports_verbosity": { "type": "boolean" },
+        "supports_search": { "type": "boolean" },
+        "supports_image_detail_original": { "type": "boolean" },
+        "truncation_limit": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "model": {
+      "type": "object", "additionalProperties": false, "required": ["codex"],
+      "properties": {
+        "aliases": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "provider": { "type": "string", "minLength": 1 },
+        "responses_mode": { "$ref": "#/$defs/responsesMode" },
+        "adapter": { "$ref": "#/$defs/adapter" },
+        "codex": { "$ref": "#/$defs/codex" }
+      }
+    }
+  }
+}

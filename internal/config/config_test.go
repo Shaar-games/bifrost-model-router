@@ -58,3 +58,31 @@ models:
 		t.Fatalf("expected collision rejection, got %v", err)
 	}
 }
+
+func TestDecodeRejectsUnknownFields(t *testing.T) {
+	_, err := Decode(strings.NewReader(`
+version: 1
+unexpected: true
+providers:
+  openai: {credential_mode: request_passthrough, responses_mode: native}
+models:
+  openai/test: {codex: {}}
+`))
+	if err == nil || !strings.Contains(err.Error(), "field unexpected not found") {
+		t.Fatalf("expected unknown field error, got %v", err)
+	}
+}
+
+func TestFromAnyRejectsUnknownFields(t *testing.T) {
+	_, err := FromAny(map[string]any{
+		"version":    1,
+		"unexpected": true,
+		"providers": map[string]any{
+			"openai": map[string]any{"credential_mode": "request_passthrough", "responses_mode": "native"},
+		},
+		"models": map[string]any{"openai/test": map[string]any{"codex": map[string]any{}}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("expected unknown field error, got %v", err)
+	}
+}

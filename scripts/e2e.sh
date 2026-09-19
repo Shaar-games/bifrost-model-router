@@ -11,22 +11,22 @@ mkdir -p "${app_dir}"
 
 processes=()
 cleanup() {
-  for pid in "${processes[@]:-}"; do
-    kill "${pid}" 2>/dev/null || true
-  done
-  rm -rf "${test_root}"
+	for pid in "${processes[@]:-}"; do
+		kill "${pid}" 2>/dev/null || true
+	done
+	rm -rf "${test_root}"
 }
 trap cleanup EXIT
 dump_logs() {
-  status=$?
-  printf 'e2e failed with status %s\n' "${status}" >&2
-  for log_file in "${test_root}"/*.log; do
-    if [[ -f "${log_file}" ]]; then
-      printf '\n==> %s <==\n' "${log_file}" >&2
-      cat "${log_file}" >&2
-    fi
-  done
-  exit "${status}"
+	status=$?
+	printf 'e2e failed with status %s\n' "${status}" >&2
+	for log_file in "${test_root}"/*.log; do
+		if [[ -f "${log_file}" ]]; then
+			printf '\n==> %s <==\n' "${log_file}" >&2
+			cat "${log_file}" >&2
+		fi
+	done
+	exit "${status}"
 }
 trap dump_logs ERR
 
@@ -107,41 +107,41 @@ processes+=("$!")
 
 ready=0
 for _ in $(seq 1 80); do
-  if curl --fail --silent http://127.0.0.1:18080/health >/dev/null; then
-    ready=1
-    break
-  fi
-  sleep 0.25
+	if curl --fail --silent http://127.0.0.1:18080/health >/dev/null; then
+		ready=1
+		break
+	fi
+	sleep 0.25
 done
 if [[ "${ready}" != 1 ]]; then
-  cat "${test_root}/bifrost.log" >&2
-  exit 1
+	cat "${test_root}/bifrost.log" >&2
+	exit 1
 fi
 
 native_json="$(curl --fail-with-body --silent http://127.0.0.1:18080/v1/responses \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer openai-canary' \
-  --data '{"model":"openai/native-model","input":"hello"}')"
+	-H 'Content-Type: application/json' \
+	-H 'Authorization: Bearer openai-canary' \
+	--data '{"model":"openai/native-model","input":"hello"}')"
 jq -e '.object == "response" and .output[0].content[0].text == "native ok"' <<<"${native_json}" >/dev/null
 
 polyfill_json="$(curl --fail-with-body --silent http://127.0.0.1:18080/v1/responses \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer openai-canary' \
-  --data '{"model":"mock-chat/chat-model","input":"hello"}')"
+	-H 'Content-Type: application/json' \
+	-H 'Authorization: Bearer openai-canary' \
+	--data '{"model":"mock-chat/chat-model","input":"hello"}')"
 jq -e '.object == "response" and .output[0].content[0].text == "polyfill ok"' <<<"${polyfill_json}" >/dev/null
 
 native_stream="$(curl --fail-with-body --silent --no-buffer http://127.0.0.1:18080/v1/responses \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer openai-canary' \
-  --data '{"model":"openai/native-model","input":"hello","stream":true}')"
+	-H 'Content-Type: application/json' \
+	-H 'Authorization: Bearer openai-canary' \
+	--data '{"model":"openai/native-model","input":"hello","stream":true}')"
 [[ "$(grep -c '"type":"response.created"' <<<"${native_stream}")" == 1 ]]
 [[ "$(grep -c '"type":"response.completed"' <<<"${native_stream}")" == 1 ]]
 [[ "${native_stream}" == *'native stream ok'* ]]
 
 polyfill_stream="$(curl --fail-with-body --silent --no-buffer http://127.0.0.1:18080/v1/responses \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer openai-canary' \
-  --data '{"model":"mock-chat/chat-model","input":"hello","stream":true}')"
+	-H 'Content-Type: application/json' \
+	-H 'Authorization: Bearer openai-canary' \
+	--data '{"model":"mock-chat/chat-model","input":"hello","stream":true}')"
 created_line="$(grep -n -m1 '"type":"response.created"' <<<"${polyfill_stream}" | cut -d: -f1)"
 delta_line="$(grep -n -m1 '"type":"response.output_text.delta"' <<<"${polyfill_stream}" | cut -d: -f1)"
 completed_line="$(grep -n -m1 '"type":"response.completed"' <<<"${polyfill_stream}" | cut -d: -f1)"
@@ -151,7 +151,7 @@ completed_line="$(grep -n -m1 '"type":"response.completed"' <<<"${polyfill_strea
 [[ "${polyfill_stream}" == *'polyfill '* && "${polyfill_stream}" == *'stream ok'* ]]
 
 unauthorized_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
-  http://127.0.0.1:18080/v1/responses \
-  -H 'Content-Type: application/json' \
-  --data '{"model":"openai/native-model","input":"hello"}')"
+	http://127.0.0.1:18080/v1/responses \
+	-H 'Content-Type: application/json' \
+	--data '{"model":"openai/native-model","input":"hello"}')"
 [[ "${unauthorized_status}" == 401 ]]

@@ -75,7 +75,9 @@ func Decode(r io.Reader) (Config, error) {
 		return Config{}, fmt.Errorf("read config: %w", err)
 	}
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	decoder := yaml.NewDecoder(strings.NewReader(string(data)))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&cfg); err != nil {
 		return Config{}, fmt.Errorf("decode config: %w", err)
 	}
 	if err := cfg.ApplyDefaultsAndValidate(); err != nil {
@@ -93,7 +95,9 @@ func FromAny(raw any) (Config, error) {
 		return Config{}, fmt.Errorf("encode plugin config: %w", err)
 	}
 	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&cfg); err != nil {
 		return Config{}, fmt.Errorf("decode plugin config: %w", err)
 	}
 	if err := cfg.ApplyDefaultsAndValidate(); err != nil {

@@ -126,17 +126,117 @@
         {
           inherit (self.packages.${system}) plugin config-check;
           bifrost = self.packages.${system}.bifrost;
-          go-test =
-            pkgs.runCommand "bifrost-router-go-test"
+          format =
+            pkgs.runCommand "bifrost-router-format"
               {
-                nativeBuildInputs = [ pkgs.go_1_27 ];
+                nativeBuildInputs = [
+                  pkgs.go_1_27
+                  pkgs.jq
+                  pkgs.nixfmt
+                  pkgs.shellcheck
+                  pkgs.shfmt
+                ];
               }
               ''
-                export HOME=$TMPDIR
+                cp -R ${self} source
+                chmod -R u+w source
+                cd source
+                test -z "$(gofmt -l cmd internal plugins)"
+                nixfmt --check flake.nix nix/*.nix
+                shfmt -d scripts
+                shellcheck scripts/*.sh
+                jq empty config/*.json
+                touch $out
+              '';
+          lint =
+            pkgs.runCommand "bifrost-router-lint"
+              {
+                nativeBuildInputs = [
+                  pkgs.go_1_27
+                  pkgs.pkg-config
+                  pkgs.sqlite
+                  pkgs.stdenv.cc
+                ];
+              }
+              ''
                 export GOCACHE=$TMPDIR/go-cache
                 export GOPATH=$TMPDIR/go
                 cp -R ${self} source
                 chmod -R u+w source
+                cp -R ${self.packages.${system}.plugin.goModules} source/vendor
+                cd source
+                go vet ./...
+                touch $out
+              '';
+          schema =
+            pkgs.runCommand "bifrost-router-schema"
+              {
+                nativeBuildInputs = [
+                  pkgs.check-jsonschema
+                  self.packages.${system}.config-check
+                ];
+              }
+              ''
+                check-jsonschema --schemafile ${./config/router.schema.json} ${./config/router.example.yaml}
+                config-check ${./config/router.example.yaml} >/dev/null
+                touch $out
+              '';
+          race =
+            pkgs.runCommand "bifrost-router-race"
+              {
+                nativeBuildInputs = [
+                  pkgs.go_1_27
+                  pkgs.pkg-config
+                  pkgs.sqlite
+                  pkgs.stdenv.cc
+                ];
+              }
+              ''
+                export GOCACHE=$TMPDIR/go-cache
+                export GOPATH=$TMPDIR/go
+                cp -R ${self} source
+                chmod -R u+w source
+                cp -R ${self.packages.${system}.plugin.goModules} source/vendor
+                cd source
+                go test -race ./...
+                touch $out
+              '';
+          fuzz-smoke =
+            pkgs.runCommand "bifrost-router-fuzz-smoke"
+              {
+                nativeBuildInputs = [
+                  pkgs.go_1_27
+                  pkgs.pkg-config
+                  pkgs.sqlite
+                  pkgs.stdenv.cc
+                ];
+              }
+              ''
+                export GOCACHE=$TMPDIR/go-cache
+                export GOPATH=$TMPDIR/go
+                cp -R ${self} source
+                chmod -R u+w source
+                cp -R ${self.packages.${system}.plugin.goModules} source/vendor
+                cd source
+                go test ./internal/catalog -run '^$' -fuzz FuzzHydrateDeterministic -fuzztime 2s
+                touch $out
+              '';
+          go-test =
+            pkgs.runCommand "bifrost-router-go-test"
+              {
+                nativeBuildInputs = [
+                  pkgs.go_1_27
+                  pkgs.pkg-config
+                  pkgs.sqlite
+                  pkgs.stdenv.cc
+                ];
+              }
+              ''
+                export GOCACHE=$TMPDIR/go-cache
+                export GOPATH=$TMPDIR/go
+                cp -R ${self} source
+                chmod -R u+w source
+                cp -R ${self.packages.${system}.plugin.goModules} source/vendor
                 cd source
                 go test ./...
                 touch $out
@@ -147,7 +247,6 @@
                 nativeBuildInputs = [ pkgs.curl ];
               }
               ''
-                export HOME=$TMPDIR
                 mkdir -p $TMPDIR/app
                 cat >$TMPDIR/app/pricing.json <<JSON
                 {}

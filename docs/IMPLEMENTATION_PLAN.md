@@ -1,6 +1,6 @@
 # Bifrost Codex Model Router: Implementation Plan
 
-Status: proposed
+Status: accepted; core implementation delivered, production-hardening backlog retained below
 
 Last reviewed: 2026-09-19
 

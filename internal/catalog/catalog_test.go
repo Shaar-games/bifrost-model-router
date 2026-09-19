@@ -1,13 +1,37 @@
 package catalog
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 
 	"github.com/applyinnovations/bifrost-model-router/internal/config"
 )
 
-func testConfig(t *testing.T) config.Config {
+func FuzzHydrateDeterministic(f *testing.F) {
+	cfg := testConfig(f)
+	f.Add([]byte(`{"data":[{"id":"openai/a","future":{"keep":true}}]}`))
+	f.Add([]byte(`{"models":[]}`))
+	f.Fuzz(func(t *testing.T, body []byte) {
+		first, err := Hydrate(body, cfg)
+		if err != nil {
+			return
+		}
+		second, err := Hydrate(body, cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(first, second) {
+			t.Fatalf("hydration is not deterministic")
+		}
+		var decoded any
+		if err := json.Unmarshal(first, &decoded); err != nil {
+			t.Fatalf("invalid hydrated JSON: %v", err)
+		}
+	})
+}
+
+func testConfig(t testing.TB) config.Config {
 	t.Helper()
 	cfg := config.Config{
 		Version: 1,
