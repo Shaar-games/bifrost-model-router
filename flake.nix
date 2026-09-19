@@ -61,13 +61,36 @@
               '';
             }
           );
+          bifrostHost = pkgs.buildGo127Module {
+            pname = "bifrost-http";
+            inherit version;
+            src = bifrost;
+            modRoot = "transports";
+            vendorHash = "sha256-tlKIt38Rh5KQu4ny534eqC6PPE1DTLQEC5m+rHAUJJ0=";
+            subPackages = [ "bifrost-http" ];
+            tags = [ "sqlite_static" ];
+            postPatch = ''
+              cp -R ${./nix/ui} transports/bifrost-http/ui
+            '';
+            nativeBuildInputs = [ pkgs.pkg-config ];
+            buildInputs = [ pkgs.sqlite ];
+            go = pkgs.go_1_27;
+            ldflags = [
+              "-s"
+              "-w"
+              "-X main.Version=v2.2.1-router"
+            ];
+            doCheck = false;
+          };
         in
         {
           inherit plugin;
+          bifrost = bifrostHost;
           config-check = configCheck;
           default = pkgs.symlinkJoin {
             name = "bifrost-model-router-${version}";
             paths = [
+              bifrostHost
               plugin
               configCheck
             ];
@@ -82,6 +105,7 @@
         in
         {
           inherit (self.packages.${system}) plugin config-check;
+          bifrost = self.packages.${system}.bifrost;
           go-test =
             pkgs.runCommand "bifrost-router-go-test"
               {
@@ -95,6 +119,71 @@
                 chmod -R u+w source
                 cd source
                 go test ./...
+                touch $out
+              '';
+          plugin-load =
+            pkgs.runCommand "bifrost-router-plugin-load"
+              {
+                nativeBuildInputs = [ pkgs.curl ];
+              }
+              ''
+                export HOME=$TMPDIR
+                mkdir -p $TMPDIR/app
+                cat >$TMPDIR/app/pricing.json <<JSON
+                {}
+                JSON
+                cat >$TMPDIR/app/model-parameters.json <<JSON
+                {}
+                JSON
+                cat >$TMPDIR/app/config.json <<JSON
+                {
+                  "\$schema": "https://www.getbifrost.ai/schema",
+                  "version": 2,
+                  "config_store": { "enabled": false },
+                  "logs_store": { "enabled": false },
+                  "framework": {
+                    "pricing": {
+                      "pricing_url": "file://$TMPDIR/app/pricing.json",
+                      "model_parameters_url": "file://$TMPDIR/app/model-parameters.json"
+                    }
+                  },
+                  "client": { "allow_direct_keys": true, "disable_content_logging": true },
+                  "providers": { "openai": { "keys": [] } },
+                  "plugins": [{
+                    "enabled": true,
+                    "name": "codex-model-router",
+                    "path": "${self.packages.${system}.plugin}/lib/bifrost/plugins/codex-model-router.so",
+                    "config": {
+                      "version": 1,
+                      "providers": {
+                        "openai": { "credential_mode": "request_passthrough", "responses_mode": "native" }
+                      },
+                      "models": { "openai/test": { "codex": {} } }
+                    }
+                  }]
+                }
+                JSON
+                ${self.packages.${system}.bifrost}/bin/bifrost-http \
+                  -app-dir $TMPDIR/app -host 127.0.0.1 -port 18080 \
+                  >$TMPDIR/bifrost.log 2>&1 &
+                server_pid=$!
+                trap 'kill $server_pid 2>/dev/null || true' EXIT
+                ready=0
+                for attempt in $(seq 1 60); do
+                  if curl --fail --silent http://127.0.0.1:18080/health >/dev/null; then
+                    ready=1
+                    break
+                  fi
+                  if ! kill -0 $server_pid 2>/dev/null; then
+                    cat $TMPDIR/bifrost.log >&2
+                    exit 1
+                  fi
+                  sleep 0.25
+                done
+                if [ "$ready" -ne 1 ]; then
+                  cat $TMPDIR/bifrost.log >&2
+                  exit 1
+                fi
                 touch $out
               '';
         }
@@ -140,9 +229,6 @@
 
       formatter = eachSystem (system: (import nixpkgs { inherit system; }).nixfmt-rfc-style);
 
-      # Kept as an input in the lock file so the host revision paired with this
-      # plugin is explicit. The coupled host build is added after the ABI smoke
-      # test in the next milestone.
       _bifrostSource = bifrost;
     };
 }

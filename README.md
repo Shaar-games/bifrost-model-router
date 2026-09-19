@@ -22,5 +22,12 @@ Build the plugin and configuration checker with:
 nix build .#default
 ```
 
+The default package also contains the pinned Bifrost HTTP host. The host and
+plugin use Go 1.27, Bifrost core v1.9.1, and the same Nix toolchain. CI starts
+the packaged host with the packaged plugin to catch Go plugin ABI drift.
+
+Individual outputs are available as `.#bifrost`, `.#plugin`, and
+`.#config-check`.
+
 Provider secrets are runtime inputs. Do not add them to Nix expressions,
 tracked configuration, or the Codex provider profile.
