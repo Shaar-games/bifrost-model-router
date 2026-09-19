@@ -3,7 +3,7 @@ module github.com/applyinnovations/bifrost-model-router
 go 1.27.0
 
 require (
-	github.com/maximhq/bifrost/core v1.9.1
+	github.com/maximhq/bifrost/core v1.9.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

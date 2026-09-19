@@ -30,7 +30,7 @@
             pname = "bifrost-model-router";
             inherit version;
             src = self;
-            vendorHash = "sha256-Pvpgztn+0kKrqkqtmNNRs4IpdVpyjoNk2zd2UiRxNM8=";
+            vendorHash = "sha256-4louYB9FqGkC/FyN6LY/1TtcvGxaZMucvm19lNDRAZI=";
             nativeBuildInputs = [ pkgs.pkg-config ];
             buildInputs = [ pkgs.sqlite ];
             go = pkgs.go_1_27;
@@ -41,6 +41,14 @@
             // {
               pname = "bifrost-router-config-check";
               subPackages = [ "cmd/config-check" ];
+            }
+          );
+          mockProvider = pkgs.buildGo127Module (
+            common
+            // {
+              pname = "bifrost-router-mock-provider";
+              subPackages = [ "cmd/mock-provider" ];
+              doCheck = false;
             }
           );
           plugin = pkgs.buildGo127Module (
@@ -87,6 +95,7 @@
           inherit plugin;
           bifrost = bifrostHost;
           config-check = configCheck;
+          mock-provider = mockProvider;
           default = pkgs.symlinkJoin {
             name = "bifrost-model-router-${version}";
             paths = [
@@ -184,6 +193,22 @@
                   cat $TMPDIR/bifrost.log >&2
                   exit 1
                 fi
+                touch $out
+              '';
+          e2e =
+            pkgs.runCommand "bifrost-router-e2e"
+              {
+                nativeBuildInputs = [
+                  pkgs.bash
+                  pkgs.curl
+                  pkgs.jq
+                ];
+              }
+              ''
+                export BIFROST_BIN=${self.packages.${system}.bifrost}/bin/bifrost-http
+                export ROUTER_PLUGIN=${self.packages.${system}.plugin}/lib/bifrost/plugins/codex-model-router.so
+                export MOCK_PROVIDER_BIN=${self.packages.${system}.mock-provider}/bin/mock-provider
+                ${pkgs.bash}/bin/bash ${./scripts/e2e.sh}
                 touch $out
               '';
         }

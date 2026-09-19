@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${BIFROST_BIN:?set BIFROST_BIN}"
+: "${ROUTER_PLUGIN:?set ROUTER_PLUGIN}"
+: "${MOCK_PROVIDER_BIN:?set MOCK_PROVIDER_BIN}"
+
+test_root="$(mktemp -d "${TMPDIR:-/tmp}/bifrost-router-e2e.XXXXXX")"
+app_dir="${test_root}/app"
+mkdir -p "${app_dir}"
+
+processes=()
+cleanup() {
+  for pid in "${processes[@]:-}"; do
+    kill "${pid}" 2>/dev/null || true
+  done
+  rm -rf "${test_root}"
+}
+trap cleanup EXIT
+dump_logs() {
+  status=$?
+  printf 'e2e failed with status %s\n' "${status}" >&2
+  for log_file in "${test_root}"/*.log; do
+    if [[ -f "${log_file}" ]]; then
+      printf '\n==> %s <==\n' "${log_file}" >&2
+      cat "${log_file}" >&2
+    fi
+  done
+  exit "${status}"
+}
+trap dump_logs ERR
+
+"${MOCK_PROVIDER_BIN}" -listen 127.0.0.1:18101 -mode native -expected-token openai-canary >"${test_root}/native.log" 2>&1 &
+processes+=("$!")
+"${MOCK_PROVIDER_BIN}" -listen 127.0.0.1:18102 -mode chat -expected-token bifrost-canary >"${test_root}/chat.log" 2>&1 &
+processes+=("$!")
+
+cat >"${app_dir}/pricing.json" <<'JSON'
+{}
+JSON
+cat >"${app_dir}/model-parameters.json" <<'JSON'
+{}
+JSON
+cat >"${app_dir}/config.json" <<JSON
+{
+  "\$schema": "https://www.getbifrost.ai/schema",
+  "version": 2,
+  "config_store": { "enabled": false },
+  "logs_store": { "enabled": false },
+  "framework": {
+    "pricing": {
+      "pricing_url": "file://${app_dir}/pricing.json",
+      "model_parameters_url": "file://${app_dir}/model-parameters.json"
+    }
+  },
+  "client": {
+    "allow_direct_keys": true,
+    "disable_content_logging": true,
+    "enable_logging": false
+  },
+  "providers": {
+    "openai": {
+      "keys": [],
+      "network_config": { "base_url": "http://127.0.0.1:18101", "allow_private_network": true }
+    },
+    "mock-chat": {
+      "keys": [{ "name": "mock-chat", "value": "env.MOCK_CHAT_KEY", "models": ["*"], "weight": 1 }],
+      "network_config": { "base_url": "http://127.0.0.1:18102", "allow_private_network": true },
+      "custom_provider_config": {
+        "base_provider_type": "openai",
+        "allowed_requests": {
+          "chat_completion": true,
+          "chat_completion_stream": true,
+          "responses": false,
+          "responses_stream": false,
+          "list_models": false
+        },
+        "request_path_overrides": {
+          "chat_completion": "/v1/chat/completions",
+          "chat_completion_stream": "/v1/chat/completions"
+        }
+      }
+    }
+  },
+  "plugins": [{
+    "enabled": true,
+    "name": "codex-model-router",
+    "path": "${ROUTER_PLUGIN}",
+    "config": {
+      "version": 1,
+      "instructions_template": "You are a coding agent.",
+      "providers": {
+        "openai": { "credential_mode": "request_passthrough", "responses_mode": "native" },
+        "mock-chat": { "credential_mode": "bifrost", "responses_mode": "chat_polyfill" }
+      },
+      "models": {
+        "openai/native-model": { "aliases": ["native-model"], "codex": { "context_window": 128000 } },
+        "mock-chat/chat-model": { "aliases": ["chat-model"], "codex": { "context_window": 64000 } }
+      }
+    }
+  }]
+}
+JSON
+
+MOCK_CHAT_KEY=bifrost-canary "${BIFROST_BIN}" -app-dir "${app_dir}" -host 127.0.0.1 -port 18080 >"${test_root}/bifrost.log" 2>&1 &
+processes+=("$!")
+
+ready=0
+for _ in $(seq 1 80); do
+  if curl --fail --silent http://127.0.0.1:18080/health >/dev/null; then
+    ready=1
+    break
+  fi
+  sleep 0.25
+done
+if [[ "${ready}" != 1 ]]; then
+  cat "${test_root}/bifrost.log" >&2
+  exit 1
+fi
+
+native_json="$(curl --fail-with-body --silent http://127.0.0.1:18080/v1/responses \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer openai-canary' \
+  --data '{"model":"openai/native-model","input":"hello"}')"
+jq -e '.object == "response" and .output[0].content[0].text == "native ok"' <<<"${native_json}" >/dev/null
+
+polyfill_json="$(curl --fail-with-body --silent http://127.0.0.1:18080/v1/responses \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer openai-canary' \
+  --data '{"model":"mock-chat/chat-model","input":"hello"}')"
+jq -e '.object == "response" and .output[0].content[0].text == "polyfill ok"' <<<"${polyfill_json}" >/dev/null
+
+unauthorized_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  http://127.0.0.1:18080/v1/responses \
+  -H 'Content-Type: application/json' \
+  --data '{"model":"openai/native-model","input":"hello"}')"
+[[ "${unauthorized_status}" == 401 ]]
