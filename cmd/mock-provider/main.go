@@ -51,7 +51,14 @@ func (p *provider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.Stream {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"message": "stream fixture not requested in this test"}})
+		switch {
+		case p.mode == "native" && strings.HasSuffix(r.URL.Path, "/responses"):
+			writeNativeStream(w, body.Model)
+		case p.mode == "chat" && strings.HasSuffix(r.URL.Path, "/chat/completions"):
+			writeChatStream(w, body.Model)
+		default:
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": map[string]any{"message": fmt.Sprintf("unexpected streaming %s path %s", p.mode, r.URL.Path)}})
+		}
 		return
 	}
 	switch {
@@ -61,6 +68,60 @@ func (p *provider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, chatResponse(body.Model))
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": map[string]any{"message": fmt.Sprintf("unexpected %s path %s", p.mode, r.URL.Path)}})
+	}
+}
+
+func writeNativeStream(w http.ResponseWriter, model string) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	response := nativeResponse(model)
+	writeSSE(w, "response.created", map[string]any{
+		"type": "response.created", "sequence_number": 0, "response": map[string]any{
+			"id": "resp_native_stream", "object": "response", "created_at": 1, "model": model, "status": "in_progress", "output": []any{},
+		},
+	})
+	writeSSE(w, "response.output_text.delta", map[string]any{
+		"type": "response.output_text.delta", "sequence_number": 1, "item_id": "msg_native_stream", "output_index": 0, "content_index": 0, "delta": "native stream ok",
+	})
+	response["id"] = "resp_native_stream"
+	writeSSE(w, "response.completed", map[string]any{
+		"type": "response.completed", "sequence_number": 2, "response": response,
+	})
+}
+
+func writeChatStream(w http.ResponseWriter, model string) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	writeSSE(w, "", map[string]any{
+		"id": "chatcmpl_stream", "object": "chat.completion.chunk", "created": 1, "model": model,
+		"choices": []map[string]any{{"index": 0, "delta": map[string]any{"role": "assistant", "content": "polyfill "}, "finish_reason": nil}},
+	})
+	writeSSE(w, "", map[string]any{
+		"id": "chatcmpl_stream", "object": "chat.completion.chunk", "created": 1, "model": model,
+		"choices": []map[string]any{{"index": 0, "delta": map[string]any{"content": "stream ok"}, "finish_reason": nil}},
+	})
+	writeSSE(w, "", map[string]any{
+		"id": "chatcmpl_stream", "object": "chat.completion.chunk", "created": 1, "model": model,
+		"choices": []map[string]any{{"index": 0, "delta": map[string]any{}, "finish_reason": "stop"}},
+		"usage":   map[string]any{"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+	})
+	fmt.Fprint(w, "data: [DONE]\n\n")
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func writeSSE(w http.ResponseWriter, event string, value any) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	if event != "" {
+		fmt.Fprintf(w, "event: %s\n", event)
+	}
+	fmt.Fprintf(w, "data: %s\n\n", data)
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
 	}
 }
 
