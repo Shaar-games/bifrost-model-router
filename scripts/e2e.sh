@@ -118,6 +118,12 @@ if [[ "${ready}" != 1 ]]; then
 	exit 1
 fi
 
+catalog_json="$(curl --fail-with-body --silent 'http://127.0.0.1:18080/v1/models?client_version=e2e')"
+jq -e '
+  ([.models[] | select(.slug == "openai/native-model" and .responses_mode == "native")] | length == 1)
+  and ([.models[] | select(.slug == "mock-chat/chat-model" and .responses_mode == "chat_polyfill")] | length == 1)
+' <<<"${catalog_json}" >/dev/null
+
 native_json="$(curl --fail-with-body --silent http://127.0.0.1:18080/v1/responses \
 	-H 'Content-Type: application/json' \
 	-H 'Authorization: Bearer openai-canary' \
