@@ -118,6 +118,7 @@ cat >"${app_dir}/config.json" <<JSON
     "config": {
       "version": 1,
       "instructions_template": "You are a coding agent.",
+      "hosted_tool_fallback_model": "openai/native-model",
       "providers": {
         "openai": { "credential_mode": "request_passthrough", "responses_mode": "native" },
         "mock-chat": { "credential_mode": "bifrost", "responses_mode": "chat_polyfill" }
@@ -135,7 +136,7 @@ MOCK_CHAT_KEY=bifrost-canary BIFROST_TEST_VK=sk-bf-e2e "${BIFROST_BIN}" -app-dir
 processes+=("$!")
 
 ready=0
-for _ in $(seq 1 80); do
+for _ in $(seq 1 480); do
 	if curl --fail --silent http://127.0.0.1:18080/health >/dev/null; then
 		ready=1
 		break
@@ -167,6 +168,20 @@ polyfill_json="$(curl --fail-with-body --silent http://127.0.0.1:18080/v1/respon
 	-H 'x-bf-vk: sk-bf-e2e' \
 	--data '{"model":"mock-chat/chat-model","input":"hello"}')"
 jq -e '.object == "response" and .output[0].content[0].text == "polyfill ok"' <<<"${polyfill_json}" >/dev/null
+
+hosted_fallback_json="$(curl --fail-with-body --silent http://127.0.0.1:18080/v1/responses \
+	-H 'Content-Type: application/json' \
+	-H 'Authorization: Bearer openai-canary' \
+	-H 'x-bf-vk: sk-bf-e2e' \
+	--data '{"model":"mock-chat/chat-model","input":"hello","tools":[{"type":"web_search"}]}')"
+jq -e '.object == "response" and .model == "native-model" and .output[0].content[0].text == "native ok"' <<<"${hosted_fallback_json}" >/dev/null
+
+namespace_polyfill_json="$(curl --fail-with-body --silent http://127.0.0.1:18080/v1/responses \
+	-H 'Content-Type: application/json' \
+	-H 'Authorization: Bearer openai-canary' \
+	-H 'x-bf-vk: sk-bf-e2e' \
+	--data '{"model":"mock-chat/chat-model","input":"hello","tools":[{"type":"namespace","name":"codex","tools":[{"type":"function","name":"shell","description":"Run a shell command","parameters":{"type":"object","properties":{"command":{"type":"string"}},"required":["command"]}}]}]}')"
+jq -e '.object == "response" and .model == "chat-model" and .output[0].content[0].text == "polyfill ok"' <<<"${namespace_polyfill_json}" >/dev/null
 
 native_stream="$(curl --fail-with-body --silent --no-buffer http://127.0.0.1:18080/v1/responses \
 	-H 'Content-Type: application/json' \
