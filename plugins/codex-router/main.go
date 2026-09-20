@@ -132,7 +132,8 @@ func PostLLMHook(_ *schemas.BifrostContext, resp *schemas.BifrostResponse, bifro
 }
 
 func isResponsesRequest(req *schemas.HTTPRequest) bool {
-	return req != nil && strings.EqualFold(req.Method, "POST") && strings.HasSuffix(req.Path, "/v1/responses")
+	return req != nil && strings.EqualFold(req.Method, "POST") && (strings.HasSuffix(req.Path, "/v1/responses") ||
+		strings.HasSuffix(req.Path, "/chatgpt_passthrough/backend-api/codex/responses"))
 }
 
 func isInferenceRequest(req *schemas.HTTPRequest) bool {
@@ -140,6 +141,7 @@ func isInferenceRequest(req *schemas.HTTPRequest) bool {
 		return false
 	}
 	return strings.HasSuffix(req.Path, "/v1/responses") ||
+		strings.HasSuffix(req.Path, "/chatgpt_passthrough/backend-api/codex/responses") ||
 		strings.HasSuffix(req.Path, "/v1/chat/completions") ||
 		strings.HasSuffix(req.Path, "/v1/completions")
 }

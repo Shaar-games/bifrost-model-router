@@ -1,0 +1,141 @@
+package gateway
+
+import (
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/applyinnovations/bifrost-model-router/internal/config"
+)
+
+func testConfig(t *testing.T) config.Config {
+	t.Helper()
+	cfg := config.Config{
+		Version:                 1,
+		HostedToolFallbackModel: "openai/luna",
+		Providers: map[string]config.ProviderProfile{
+			"openai": {CredentialMode: config.CredentialRequestPassthrough, ResponsesMode: config.ResponsesNative},
+			"voke":   {CredentialMode: config.CredentialBifrost, ResponsesMode: config.ResponsesChatPolyfill},
+		},
+		Models: map[string]config.ModelProfile{
+			"openai/sol":  {Aliases: []string{"sol"}, Codex: config.CodexProfile{}},
+			"openai/luna": {Aliases: []string{"luna"}, Codex: config.CodexProfile{}},
+			"voke/glm":    {Aliases: []string{"glm"}, Codex: config.CodexProfile{}},
+		},
+	}
+	if err := cfg.ApplyDefaultsAndValidate(); err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
+func TestResponsesDispatch(t *testing.T) {
+	tests := []struct {
+		name      string
+		body      string
+		wantPath  string
+		wantModel string
+	}{
+		{"OpenAI native", `{"model":"openai/sol","input":"hi"}`, chatGPTResponsesPath, "sol"},
+		{"managed provider", `{"model":"voke/glm","input":"hi"}`, "/v1/responses", "voke/glm"},
+		{"hosted tool fallback", `{"model":"voke/glm","input":"hi","tools":[{"type":"web_search"}]}`, chatGPTResponsesPath, "luna"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				if req.URL.Path != test.wantPath {
+					t.Errorf("path = %q, want %q", req.URL.Path, test.wantPath)
+				}
+				if req.Header.Get("Authorization") != "Bearer test" || req.Header.Get("x-bf-vk") != "sk-bf-test" {
+					t.Errorf("routing headers were not preserved: %#v", req.Header)
+				}
+				body, _ := io.ReadAll(req.Body)
+				var envelope struct {
+					Model string `json:"model"`
+				}
+				if err := json.Unmarshal(body, &envelope); err != nil {
+					t.Fatal(err)
+				}
+				if envelope.Model != test.wantModel {
+					t.Errorf("model = %q, want %q", envelope.Model, test.wantModel)
+				}
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = w.Write([]byte("data: done\n\n"))
+			}))
+			defer upstream.Close()
+			handler, err := New(testConfig(t), upstream.URL, upstream.URL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req := httptest.NewRequest(http.MethodPost, "/v1/responses", io.NopCloser(stringsReader(test.body)))
+			req.Header.Set("Authorization", "Bearer test")
+			req.Header.Set("x-bf-vk", "sk-bf-test")
+			resp := httptest.NewRecorder()
+			handler.ServeHTTP(resp, req)
+			if resp.Code != http.StatusOK {
+				t.Fatalf("status = %d body=%s", resp.Code, resp.Body.String())
+			}
+		})
+	}
+}
+
+func TestModelsPreserveDirectMetadataAndAppendManagedModels(t *testing.T) {
+	bifrost := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/v1/models" {
+			t.Fatalf("Bifrost path = %q", req.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"models":[{"slug":"openai/sol","display_name":"stale"},{"slug":"voke/glm","display_name":"GLM"}]}`))
+	}))
+	defer bifrost.Close()
+	chatGPT := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/backend-api/codex/models" || req.URL.Query().Get("client_version") != "test" {
+			t.Fatalf("ChatGPT request = %s", req.URL.String())
+		}
+		if req.Header.Get("Authorization") != "Bearer test" || req.Header.Get("x-bf-vk") != "" {
+			t.Fatalf("ChatGPT headers = %#v", req.Header)
+		}
+		_, _ = w.Write([]byte(`{"models":[{"slug":"sol","display_name":"Direct Sol","context_window":872000}],"recommended_model":"sol"}`))
+	}))
+	defer chatGPT.Close()
+	handler, err := New(testConfig(t), bifrost.URL, chatGPT.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/v1/models?client_version=test", nil)
+	req.Header.Set("Authorization", "Bearer test")
+	req.Header.Set("x-bf-vk", "sk-bf-test")
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", resp.Code, resp.Body.String())
+	}
+	var catalog struct {
+		Models []struct {
+			Slug          string `json:"slug"`
+			DisplayName   string `json:"display_name"`
+			ContextWindow int    `json:"context_window"`
+		} `json:"models"`
+		RecommendedModel string `json:"recommended_model"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &catalog); err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.Models) != 2 || catalog.Models[0].Slug != "sol" || catalog.Models[0].DisplayName != "Direct Sol" || catalog.Models[0].ContextWindow != 872000 || catalog.Models[1].Slug != "voke/glm" || catalog.RecommendedModel != "sol" {
+		t.Fatalf("merged catalog = %#v", catalog)
+	}
+}
+
+func stringsReader(value string) *reader { return &reader{value: value} }
+
+type reader struct{ value string }
+
+func (r *reader) Read(p []byte) (int, error) {
+	if r.value == "" {
+		return 0, io.EOF
+	}
+	n := copy(p, r.value)
+	r.value = r.value[n:]
+	return n, nil
+}

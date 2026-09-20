@@ -63,6 +63,13 @@
               ldflags = [ "-X main.version=${version}" ];
             }
           );
+          gateway = pkgs.buildGo127Module (
+            common
+            // {
+              pname = "bifrost-router-gateway";
+              subPackages = [ "cmd/gateway" ];
+            }
+          );
           mockProvider = pkgs.buildGo127Module (
             common
             // {
@@ -130,6 +137,7 @@
             paths = [
               bifrostHost
               plugin
+              gateway
               launcher
               pkgs.cacert
               pkgs.curl
@@ -170,7 +178,7 @@
           };
         in
         {
-          inherit plugin image;
+          inherit plugin image gateway;
           bifrost = bifrostHost;
           bifrost-ui = bifrostUI;
           bifrost-model-router-image = image;
@@ -184,6 +192,7 @@
               plugin
               configCheck
               router
+              gateway
             ];
           };
         }
@@ -440,6 +449,10 @@
         router = {
           type = "app";
           program = "${self.packages.${system}.router}/bin/router";
+        };
+        gateway = {
+          type = "app";
+          program = "${self.packages.${system}.gateway}/bin/gateway";
         };
         bifrost = {
           type = "app";

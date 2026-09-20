@@ -112,6 +112,26 @@ func TestPreAuthRoutesCredentials(t *testing.T) {
 	})
 }
 
+func TestPreAuthRoutesChatGPTPassthroughCredentials(t *testing.T) {
+	initTestPlugin(t)
+	req := &schemas.HTTPRequest{
+		Method: "POST",
+		Path:   "/chatgpt_passthrough/backend-api/codex/responses",
+		Headers: map[string]string{
+			"Authorization": "Bearer openai-canary",
+			"x-bf-vk":       "sk-bf-canary",
+		},
+		Body: requestBody("a"),
+	}
+	resp, err := HTTPTransportPreAuthHook(nil, req)
+	if err != nil || resp != nil {
+		t.Fatalf("resp=%v err=%v", resp, err)
+	}
+	if req.Headers["Authorization"] == "" || req.Headers["x-bf-direct-key"] != "true" {
+		t.Fatalf("headers = %#v", req.Headers)
+	}
+}
+
 func TestPreLLMSelectsPolyfill(t *testing.T) {
 	initTestPlugin(t)
 	ctx := schemas.NewBifrostContext(context.Background(), time.Now().Add(time.Minute))
