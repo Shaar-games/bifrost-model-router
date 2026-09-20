@@ -136,7 +136,10 @@ MOCK_CHAT_KEY=bifrost-canary BIFROST_TEST_VK=sk-bf-e2e "${BIFROST_BIN}" -app-dir
 processes+=("$!")
 
 ready=0
-for _ in $(seq 1 480); do
+# A clean Bifrost database currently applies a long migration chain. Shared CI
+# runners can need more than two minutes even though steady-state startup is
+# fast, so allow five minutes while still polling at a short interval.
+for _ in $(seq 1 1200); do
 	if curl --fail --silent http://127.0.0.1:18080/health >/dev/null; then
 		ready=1
 		break
