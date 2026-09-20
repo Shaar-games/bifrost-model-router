@@ -2,6 +2,16 @@
 
 ## Deployment
 
+Build the non-root OCI image stream with:
+
+```sh
+nix build .#bifrost-model-router-image
+```
+
+The image expects declarative configuration at `/etc/bifrost/config.json`,
+copies it into its writable runtime directory, and listens on loopback for a
+same-pod gateway by default.
+
 Build `.#default` and configure the NixOS module:
 
 ```nix

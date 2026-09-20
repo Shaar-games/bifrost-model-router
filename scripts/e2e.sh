@@ -127,18 +127,21 @@ jq -e '
 native_json="$(curl --fail-with-body --silent http://127.0.0.1:18080/v1/responses \
 	-H 'Content-Type: application/json' \
 	-H 'Authorization: Bearer openai-canary' \
+	-H 'x-bf-vk: sk-bf-e2e' \
 	--data '{"model":"openai/native-model","input":"hello"}')"
 jq -e '.object == "response" and .output[0].content[0].text == "native ok"' <<<"${native_json}" >/dev/null
 
 polyfill_json="$(curl --fail-with-body --silent http://127.0.0.1:18080/v1/responses \
 	-H 'Content-Type: application/json' \
 	-H 'Authorization: Bearer openai-canary' \
+	-H 'x-bf-vk: sk-bf-e2e' \
 	--data '{"model":"mock-chat/chat-model","input":"hello"}')"
 jq -e '.object == "response" and .output[0].content[0].text == "polyfill ok"' <<<"${polyfill_json}" >/dev/null
 
 native_stream="$(curl --fail-with-body --silent --no-buffer http://127.0.0.1:18080/v1/responses \
 	-H 'Content-Type: application/json' \
 	-H 'Authorization: Bearer openai-canary' \
+	-H 'x-bf-vk: sk-bf-e2e' \
 	--data '{"model":"openai/native-model","input":"hello","stream":true}')"
 [[ "$(grep -c '"type":"response.created"' <<<"${native_stream}")" == 1 ]]
 [[ "$(grep -c '"type":"response.completed"' <<<"${native_stream}")" == 1 ]]
@@ -147,6 +150,7 @@ native_stream="$(curl --fail-with-body --silent --no-buffer http://127.0.0.1:180
 polyfill_stream="$(curl --fail-with-body --silent --no-buffer http://127.0.0.1:18080/v1/responses \
 	-H 'Content-Type: application/json' \
 	-H 'Authorization: Bearer openai-canary' \
+	-H 'x-bf-vk: sk-bf-e2e' \
 	--data '{"model":"mock-chat/chat-model","input":"hello","stream":true}')"
 created_line="$(grep -n -m1 '"type":"response.created"' <<<"${polyfill_stream}" | cut -d: -f1)"
 delta_line="$(grep -n -m1 '"type":"response.output_text.delta"' <<<"${polyfill_stream}" | cut -d: -f1)"
@@ -155,6 +159,13 @@ completed_line="$(grep -n -m1 '"type":"response.completed"' <<<"${polyfill_strea
 ((created_line < delta_line && delta_line < completed_line))
 [[ "$(grep -c '"type":"response.completed"' <<<"${polyfill_stream}")" == 1 ]]
 [[ "${polyfill_stream}" == *'polyfill '* && "${polyfill_stream}" == *'stream ok'* ]]
+
+missing_gateway_auth_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+	http://127.0.0.1:18080/v1/responses \
+	-H 'Content-Type: application/json' \
+	-H 'Authorization: Bearer openai-canary' \
+	--data '{"model":"openai/native-model","input":"hello"}')"
+[[ "${missing_gateway_auth_status}" == 401 ]]
 
 unauthorized_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
 	http://127.0.0.1:18080/v1/responses \

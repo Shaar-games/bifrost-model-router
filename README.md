@@ -29,7 +29,9 @@ plugin use Go 1.27, Bifrost core v1.9.0, and the same Nix toolchain. CI starts
 the packaged host with the packaged plugin to catch Go plugin ABI drift.
 
 Individual outputs are available as `.#bifrost`, `.#plugin`, `.#router`, and
-`.#config-check`.
+`.#config-check`. The deployable OCI stream is available as
+`.#bifrost-model-router-image`; it embeds the upstream Bifrost console built
+from the same pinned source revision as the HTTP host.
 
 ## Configure Codex
 

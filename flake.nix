@@ -26,6 +26,18 @@
         let
           pkgs = import nixpkgs { inherit system; };
           version = "0.1.0-dev";
+          bifrostUI = pkgs.buildNpmPackage {
+            pname = "bifrost-ui";
+            inherit version;
+            src = "${bifrost}/ui";
+            npmDepsHash = "sha256-cOswnT4ZahWX66h9oiw4t3r5GZeOH/yjbnTCAsjVgnw=";
+            npmBuildScript = "build-enterprise";
+            installPhase = ''
+              runHook preInstall
+              cp -R out $out
+              runHook postInstall
+            '';
+          };
           common = {
             pname = "bifrost-model-router";
             inherit version;
@@ -87,7 +99,7 @@
             subPackages = [ "bifrost-http" ];
             tags = [ "sqlite_static" ];
             postPatch = ''
-              cp -R ${./nix/ui} transports/bifrost-http/ui
+              cp -R ${bifrostUI} transports/bifrost-http/ui
             '';
             nativeBuildInputs = [ pkgs.pkg-config ];
             buildInputs = [ pkgs.sqlite ];
@@ -99,10 +111,69 @@
             ];
             doCheck = false;
           };
+          launcher = pkgs.writeShellApplication {
+            name = "bifrost-model-router-server";
+            runtimeInputs = [ pkgs.coreutils ];
+            text = ''
+              app_dir="''${BIFROST_APP_DIR:-/var/lib/bifrost}"
+              config_file="''${BIFROST_CONFIG_FILE:-/etc/bifrost/config.json}"
+              mkdir -p "$app_dir"
+              install -m 0600 "$config_file" "$app_dir/config.json"
+              exec ${bifrostHost}/bin/bifrost-http \
+                -app-dir "$app_dir" \
+                -host "''${BIFROST_HOST:-127.0.0.1}" \
+                -port "''${BIFROST_PORT:-8080}"
+            '';
+          };
+          imageRoot = pkgs.buildEnv {
+            name = "bifrost-model-router-image-root";
+            paths = [
+              bifrostHost
+              plugin
+              launcher
+              pkgs.cacert
+              pkgs.curl
+              pkgs.tzdata
+            ];
+            pathsToLink = [
+              "/bin"
+              "/etc"
+              "/lib"
+              "/share"
+            ];
+          };
+          image = pkgs.dockerTools.streamLayeredImage {
+            name = "bifrost-model-router";
+            tag = "nix";
+            contents = [ imageRoot ];
+            config = {
+              Entrypoint = [ "/bin/bifrost-model-router-server" ];
+              Env = [
+                "BIFROST_APP_DIR=/var/lib/bifrost"
+                "BIFROST_CONFIG_FILE=/etc/bifrost/config.json"
+                "BIFROST_HOST=127.0.0.1"
+                "BIFROST_PORT=8080"
+                "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
+                "TZDIR=/share/zoneinfo"
+              ];
+              User = "65532:65532";
+              WorkingDir = "/var/lib/bifrost";
+              ExposedPorts = {
+                "8080/tcp" = { };
+              };
+              Labels = {
+                "org.opencontainers.image.source" = "https://github.com/applyinnovations/bifrost-model-router";
+                "org.opencontainers.image.version" = version;
+                "org.opencontainers.image.title" = "Bifrost Model Router";
+              };
+            };
+          };
         in
         {
-          inherit plugin;
+          inherit plugin image;
           bifrost = bifrostHost;
+          bifrost-ui = bifrostUI;
+          bifrost-model-router-image = image;
           config-check = configCheck;
           inherit router;
           mock-provider = mockProvider;
@@ -126,6 +197,39 @@
         {
           inherit (self.packages.${system}) plugin config-check;
           bifrost = self.packages.${system}.bifrost;
+          bifrost-ui = self.packages.${system}.bifrost-ui;
+          image = self.packages.${system}.bifrost-model-router-image;
+          image-metadata =
+            pkgs.runCommand "bifrost-router-image-metadata"
+              {
+                nativeBuildInputs = [
+                  pkgs.gnutar
+                  pkgs.jq
+                ];
+              }
+              ''
+                work=$TMPDIR/image
+                mkdir -p "$work"
+                ${self.packages.${system}.bifrost-model-router-image} > "$work/image.tar"
+                tar -xf "$work/image.tar" -C "$work" manifest.json
+                config_name=$(jq -r '.[0].Config' "$work/manifest.json")
+                tar -xf "$work/image.tar" -C "$work" "$config_name"
+                jq -e '.config.User == "65532:65532"' "$work/$config_name" >/dev/null
+                jq -e '.config.Entrypoint == ["/bin/bifrost-model-router-server"]' "$work/$config_name" >/dev/null
+                jq -e '.config.WorkingDir == "/var/lib/bifrost"' "$work/$config_name" >/dev/null
+                touch $out
+              '';
+          ui-content =
+            pkgs.runCommand "bifrost-router-ui-content"
+              {
+                nativeBuildInputs = [ pkgs.ripgrep ];
+              }
+              ''
+                test -s ${self.packages.${system}.bifrost-ui}/index.html
+                test -d ${self.packages.${system}.bifrost-ui}/assets
+                ! rg -q "API-only build" ${self.packages.${system}.bifrost-ui}/index.html
+                touch $out
+              '';
           format =
             pkgs.runCommand "bifrost-router-format"
               {
