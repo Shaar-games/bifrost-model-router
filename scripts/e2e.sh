@@ -45,7 +45,11 @@ cat >"${app_dir}/config.json" <<JSON
 {
   "\$schema": "https://www.getbifrost.ai/schema",
   "version": 2,
-  "config_store": { "enabled": false },
+  "config_store": {
+    "enabled": true,
+    "type": "sqlite",
+    "config": { "path": "${app_dir}/config.db" }
+  },
   "logs_store": { "enabled": false },
   "framework": {
     "pricing": {
@@ -56,7 +60,28 @@ cat >"${app_dir}/config.json" <<JSON
   "client": {
     "allow_direct_keys": true,
     "disable_content_logging": true,
-    "enable_logging": false
+    "enable_logging": false,
+    "enforce_auth_on_inference": true
+  },
+  "governance": {
+    "auth_config": { "is_enabled": false },
+    "virtual_keys": [{
+      "id": "e2e-virtual-key",
+      "name": "e2e virtual key",
+      "value": "env.BIFROST_TEST_VK",
+      "is_active": true,
+      "provider_configs": [{
+        "provider": "openai",
+        "allowed_models": ["regex:.*"],
+        "blacklisted_models": [],
+        "key_ids": ["*"]
+      }, {
+        "provider": "mock-chat",
+        "allowed_models": ["*"],
+        "blacklisted_models": [],
+        "key_ids": ["*"]
+      }]
+    }]
   },
   "providers": {
     "openai": {
@@ -84,6 +109,10 @@ cat >"${app_dir}/config.json" <<JSON
   },
   "plugins": [{
     "enabled": true,
+    "name": "governance",
+    "config": { "is_vk_mandatory": true }
+  }, {
+    "enabled": true,
     "name": "codex-model-router",
     "path": "${ROUTER_PLUGIN}",
     "config": {
@@ -102,7 +131,7 @@ cat >"${app_dir}/config.json" <<JSON
 }
 JSON
 
-MOCK_CHAT_KEY=bifrost-canary "${BIFROST_BIN}" -app-dir "${app_dir}" -host 127.0.0.1 -port 18080 >"${test_root}/bifrost.log" 2>&1 &
+MOCK_CHAT_KEY=bifrost-canary BIFROST_TEST_VK=sk-bf-e2e "${BIFROST_BIN}" -app-dir "${app_dir}" -host 127.0.0.1 -port 18080 >"${test_root}/bifrost.log" 2>&1 &
 processes+=("$!")
 
 ready=0
@@ -118,7 +147,8 @@ if [[ "${ready}" != 1 ]]; then
 	exit 1
 fi
 
-catalog_json="$(curl --fail-with-body --silent 'http://127.0.0.1:18080/v1/models?client_version=e2e')"
+catalog_json="$(curl --fail-with-body --silent 'http://127.0.0.1:18080/v1/models?client_version=e2e' \
+	-H 'x-bf-vk: sk-bf-e2e')"
 jq -e '
   ([.models[] | select(.slug == "openai/native-model" and .responses_mode == "native")] | length == 1)
   and ([.models[] | select(.slug == "mock-chat/chat-model" and .responses_mode == "chat_polyfill")] | length == 1)
@@ -166,6 +196,14 @@ missing_gateway_auth_status="$(curl --silent --output /dev/null --write-out '%{h
 	-H 'Authorization: Bearer openai-canary' \
 	--data '{"model":"openai/native-model","input":"hello"}')"
 [[ "${missing_gateway_auth_status}" == 401 ]]
+
+invalid_gateway_auth_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+	http://127.0.0.1:18080/v1/responses \
+	-H 'Content-Type: application/json' \
+	-H 'Authorization: Bearer openai-canary' \
+	-H 'x-bf-vk: sk-bf-invalid' \
+	--data '{"model":"openai/native-model","input":"hello"}')"
+[[ "${invalid_gateway_auth_status}" == 401 ]]
 
 unauthorized_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
 	http://127.0.0.1:18080/v1/responses \
