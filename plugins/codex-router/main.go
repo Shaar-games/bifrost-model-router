@@ -43,7 +43,15 @@ func HTTPTransportPreAuthHook(_ *schemas.BifrostContext, req *schemas.HTTPReques
 	if !isInferenceRequest(req) {
 		return nil, nil
 	}
-	result := credentials.Decide(req.Body, currentConfig())
+	cfg := currentConfig()
+	if isResponsesRequest(req) {
+		routedBody, _, err := responsescompat.ApplyHostedToolFallback(req.Body, cfg)
+		if err != nil {
+			return errorResponse(400, "invalid_request", "request body must be valid JSON"), nil
+		}
+		req.Body = routedBody
+	}
+	result := credentials.Decide(req.Body, cfg)
 	switch result.Decision {
 	case credentials.UseOpenAIPassthrough:
 		if !credentials.VirtualKeyPresent(req.Headers) {
@@ -121,6 +129,10 @@ func PreLLMHook(ctx *schemas.BifrostContext, req *schemas.BifrostRequest) (*sche
 
 func PostLLMHook(_ *schemas.BifrostContext, resp *schemas.BifrostResponse, bifrostErr *schemas.BifrostError) (*schemas.BifrostResponse, *schemas.BifrostError, error) {
 	return resp, bifrostErr, nil
+}
+
+func isResponsesRequest(req *schemas.HTTPRequest) bool {
+	return req != nil && strings.EqualFold(req.Method, "POST") && strings.HasSuffix(req.Path, "/v1/responses")
 }
 
 func isInferenceRequest(req *schemas.HTTPRequest) bool {

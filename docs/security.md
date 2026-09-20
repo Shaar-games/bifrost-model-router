@@ -6,8 +6,15 @@ gateway credential and is never written by this project.
 The pre-auth hook resolves the model before key selection. Only a catalog model
 owned by the exact `openai` provider and configured with
 `request_passthrough` may retain `Authorization` and receive
-`x-bf-direct-key: true`. On every Bifrost-owned route the plugin removes, using
-case-insensitive matching:
+`x-bf-direct-key: true`.
+
+Hosted-tool fallback rewrites the request model before this credential
+decision. Its target must be a cataloged native Responses model using
+`request_passthrough`, so fallback traffic is subject to the same allowlist and
+forwarded-token checks.
+
+On every Bifrost-owned route the plugin removes, using case-insensitive
+matching:
 
 - `Authorization`;
 - `x-api-key`;

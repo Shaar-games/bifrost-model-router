@@ -102,7 +102,10 @@ func (a chatAdapter) Validate(req *schemas.BifrostResponsesRequest) *Compatibili
 			return compatError("previous_response_unsupported", "previous_response_id is unavailable through a Chat Completions polyfill")
 		}
 		for _, tool := range req.Params.Tools {
-			if tool.Type != schemas.ResponsesToolTypeFunction {
+			// Namespace tools are portable after Bifrost core flattens their
+			// nested functions for the Chat Completions wire. Server-side tools
+			// are routed to a native Responses model by the transport hook.
+			if tool.Type != schemas.ResponsesToolTypeFunction && tool.Type != schemas.ResponsesToolTypeNamespace {
 				return compatError("hosted_tool_unsupported", fmt.Sprintf("tool type %q is unavailable through a Chat Completions polyfill", tool.Type))
 			}
 		}

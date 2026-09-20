@@ -12,18 +12,64 @@ import (
 func initTestPlugin(t *testing.T) {
 	t.Helper()
 	err := Init(map[string]any{
-		"version": 1,
+		"version":                    1,
+		"hosted_tool_fallback_model": "openai/luna",
 		"providers": map[string]any{
 			"openai": map[string]any{"credential_mode": "request_passthrough", "responses_mode": "native"},
 			"other":  map[string]any{"credential_mode": "bifrost", "responses_mode": "chat_polyfill"},
 		},
 		"models": map[string]any{
-			"openai/a": map[string]any{"codex": map[string]any{}},
-			"other/b":  map[string]any{"codex": map[string]any{}},
+			"openai/a":    map[string]any{"codex": map[string]any{}},
+			"openai/luna": map[string]any{"codex": map[string]any{}},
+			"other/b":     map[string]any{"codex": map[string]any{}},
 		},
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPreAuthHostedToolFallsBackWithForwardedOpenAIAuth(t *testing.T) {
+	initTestPlugin(t)
+	body := []byte(`{"model":"other/b","input":"hello","tools":[{"type":"web_search"}]}`)
+	req := &schemas.HTTPRequest{Method: "POST", Path: "/v1/responses", Headers: map[string]string{
+		"Authorization": "Bearer openai-canary",
+		"x-bf-vk":       "sk-bf-canary",
+	}, Body: body}
+	resp, err := HTTPTransportPreAuthHook(nil, req)
+	if err != nil || resp != nil {
+		t.Fatalf("resp=%v err=%v", resp, err)
+	}
+	var envelope struct {
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal(req.Body, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.Model != "openai/luna" {
+		t.Fatalf("model = %q", envelope.Model)
+	}
+	if req.Headers["Authorization"] != "Bearer openai-canary" || req.Headers["x-bf-direct-key"] != "true" {
+		t.Fatalf("forwarded auth was not selected: %#v", req.Headers)
+	}
+}
+
+func TestPreAuthNamespaceStaysOnManagedProvider(t *testing.T) {
+	initTestPlugin(t)
+	body := []byte(`{"model":"other/b","input":"hello","tools":[{"type":"namespace","name":"codex","tools":[{"type":"function","name":"shell"}]}]}`)
+	req := &schemas.HTTPRequest{Method: "POST", Path: "/v1/responses", Headers: map[string]string{
+		"Authorization": "Bearer openai-canary",
+		"x-bf-vk":       "sk-bf-canary",
+	}, Body: body}
+	resp, err := HTTPTransportPreAuthHook(nil, req)
+	if err != nil || resp != nil {
+		t.Fatalf("resp=%v err=%v", resp, err)
+	}
+	if string(req.Body) != string(body) {
+		t.Fatalf("namespace request was rerouted: %s", req.Body)
+	}
+	if len(req.Headers) != 1 || req.Headers["x-bf-vk"] == "" {
+		t.Fatalf("managed-provider credential policy not applied: %#v", req.Headers)
 	}
 }
 

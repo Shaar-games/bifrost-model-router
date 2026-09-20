@@ -26,12 +26,14 @@
     "config": {
       "version": 1,
       "instructions_template": "You are a coding agent.",
+      "hosted_tool_fallback_model": "openai/gpt-5.6-luna",
       "providers": {
         "openai": { "credential_mode": "request_passthrough", "responses_mode": "native" },
         "cerebras": { "credential_mode": "bifrost", "responses_mode": "chat_polyfill", "adapter": "single-system-message" }
       },
       "models": {
         "openai/gpt-example": { "aliases": ["gpt-example"], "codex": { "context_window": 128000 } },
+        "openai/gpt-5.6-luna": { "aliases": ["gpt-5.6-luna"], "codex": { "context_window": 272000 } },
         "cerebras/example-model": { "aliases": ["example-model"], "codex": { "context_window": 131072 } }
       }
     }

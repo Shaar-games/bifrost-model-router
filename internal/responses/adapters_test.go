@@ -22,6 +22,16 @@ func TestChatAdapterAcceptsTextAndFunctionTools(t *testing.T) {
 	}
 }
 
+func TestChatAdapterAcceptsNamespaceForCoreFlattening(t *testing.T) {
+	adapter, _ := Get("openai-chat")
+	req := &schemas.BifrostResponsesRequest{Params: &schemas.ResponsesParameters{Tools: []schemas.ResponsesTool{{
+		Type: schemas.ResponsesToolTypeNamespace,
+	}}}}
+	if err := adapter.Validate(req); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestChatAdapterRejectsStatefulAndHostedFeatures(t *testing.T) {
 	adapter, _ := Get("single-system-message")
 	t.Run("previous response", func(t *testing.T) {

@@ -29,10 +29,11 @@ const (
 )
 
 type Config struct {
-	Version      int                        `json:"version" yaml:"version"`
-	Instructions string                     `json:"instructions_template,omitempty" yaml:"instructions_template,omitempty"`
-	Providers    map[string]ProviderProfile `json:"providers" yaml:"providers"`
-	Models       map[string]ModelProfile    `json:"models" yaml:"models"`
+	Version                 int                        `json:"version" yaml:"version"`
+	Instructions            string                     `json:"instructions_template,omitempty" yaml:"instructions_template,omitempty"`
+	HostedToolFallbackModel string                     `json:"hosted_tool_fallback_model,omitempty" yaml:"hosted_tool_fallback_model,omitempty"`
+	Providers               map[string]ProviderProfile `json:"providers" yaml:"providers"`
+	Models                  map[string]ModelProfile    `json:"models" yaml:"models"`
 }
 
 type ProviderProfile struct {
@@ -174,6 +175,17 @@ func (c *Config) ApplyDefaultsAndValidate() error {
 			owned[name] = slug
 		}
 		c.Models[slug] = model
+	}
+
+	if c.HostedToolFallbackModel != "" {
+		fallback, ok := c.ResolveModel(c.HostedToolFallbackModel)
+		if !ok {
+			return fmt.Errorf("hosted_tool_fallback_model %q is not present in the router catalog", c.HostedToolFallbackModel)
+		}
+		if fallback.Provider.CredentialMode != CredentialRequestPassthrough || fallback.Model.ResponsesMode != ResponsesNative {
+			return fmt.Errorf("hosted_tool_fallback_model %q must use native Responses with request_passthrough credentials", c.HostedToolFallbackModel)
+		}
+		c.HostedToolFallbackModel = fallback.Slug
 	}
 	return nil
 }

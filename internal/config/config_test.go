@@ -86,3 +86,36 @@ func TestFromAnyRejectsUnknownFields(t *testing.T) {
 		t.Fatalf("expected unknown field error, got %v", err)
 	}
 }
+
+func TestHostedToolFallbackMustBeNativeRequestPassthroughModel(t *testing.T) {
+	t.Run("canonicalizes alias", func(t *testing.T) {
+		cfg, err := Decode(strings.NewReader(`
+version: 1
+hosted_tool_fallback_model: luna
+providers:
+  openai: {credential_mode: request_passthrough, responses_mode: native}
+models:
+  openai/luna: {aliases: [luna], codex: {}}
+`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.HostedToolFallbackModel != "openai/luna" {
+			t.Fatalf("fallback model = %q", cfg.HostedToolFallbackModel)
+		}
+	})
+
+	t.Run("rejects managed provider", func(t *testing.T) {
+		_, err := Decode(strings.NewReader(`
+version: 1
+hosted_tool_fallback_model: other/chat
+providers:
+  other: {credential_mode: bifrost, responses_mode: chat_polyfill}
+models:
+  other/chat: {codex: {}}
+`))
+		if err == nil || !strings.Contains(err.Error(), "native Responses with request_passthrough") {
+			t.Fatalf("expected fallback validation error, got %v", err)
+		}
+	})
+}
