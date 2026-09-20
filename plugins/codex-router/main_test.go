@@ -35,13 +35,23 @@ func requestBody(model string) []byte {
 func TestPreAuthRoutesCredentials(t *testing.T) {
 	initTestPlugin(t)
 	t.Run("openai", func(t *testing.T) {
-		req := &schemas.HTTPRequest{Method: "POST", Path: "/v1/responses", Headers: map[string]string{"Authorization": "Bearer openai-canary"}, Body: requestBody("openai/a")}
+		req := &schemas.HTTPRequest{Method: "POST", Path: "/v1/responses", Headers: map[string]string{"Authorization": "Bearer openai-canary", "x-bf-vk": "sk-bf-canary"}, Body: requestBody("openai/a")}
 		resp, err := HTTPTransportPreAuthHook(nil, req)
 		if err != nil || resp != nil {
 			t.Fatalf("resp=%v err=%v", resp, err)
 		}
 		if req.Headers["Authorization"] == "" || req.Headers["x-bf-direct-key"] != "true" {
 			t.Fatalf("headers = %#v", req.Headers)
+		}
+	})
+	t.Run("openai requires Bifrost virtual key", func(t *testing.T) {
+		req := &schemas.HTTPRequest{Method: "POST", Path: "/v1/responses", Headers: map[string]string{"Authorization": "Bearer openai-canary"}, Body: requestBody("openai/a")}
+		resp, err := HTTPTransportPreAuthHook(nil, req)
+		if err != nil || resp == nil || resp.StatusCode != 401 {
+			t.Fatalf("resp=%v err=%v", resp, err)
+		}
+		if req.Headers["x-bf-direct-key"] != "" {
+			t.Fatalf("direct key enabled without gateway auth: %#v", req.Headers)
 		}
 	})
 	t.Run("bifrost", func(t *testing.T) {

@@ -38,6 +38,7 @@ name = "Bifrost Router"
 base_url = %q
 wire_api = "responses"
 requires_openai_auth = true
+env_http_headers = { "x-bf-vk" = "BIFROST_API_KEY" }
 %s
 `, beginMarker, options.Provider, options.BaseURL, endMarker), nil
 }

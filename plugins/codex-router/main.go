@@ -46,6 +46,9 @@ func HTTPTransportPreAuthHook(_ *schemas.BifrostContext, req *schemas.HTTPReques
 	result := credentials.Decide(req.Body, currentConfig())
 	switch result.Decision {
 	case credentials.UseOpenAIPassthrough:
+		if !credentials.VirtualKeyPresent(req.Headers) {
+			return errorResponse(401, "missing_bifrost_auth", "a Bifrost virtual key is required in the x-bf-vk header"), nil
+		}
 		if !credentials.BearerPresent(req.Headers) {
 			return errorResponse(401, "missing_openai_auth", "OpenAI models require Codex OpenAI authentication"), nil
 		}

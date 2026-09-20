@@ -38,10 +38,11 @@ configuration, preserves all other text and comments, and writes a timestamped
 backup before changes:
 
 ```sh
-nix run .#router -- profile install --base-url http://127.0.0.1:8080/v1
+nix run .#router -- profile install --base-url https://model-router.xlab.now/v1
 ```
 
-It deliberately sets `requires_openai_auth = true` and does not store a key.
+It deliberately sets `requires_openai_auth = true`, maps `x-bf-vk` from the
+`BIFROST_API_KEY` environment variable, and does not store either credential.
 Use `profile uninstall` to remove the managed block or `profile rollback
 BACKUP` to restore an exact backup. Run `profile render` to inspect the TOML
 without changing anything.

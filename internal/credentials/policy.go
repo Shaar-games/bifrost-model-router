@@ -64,6 +64,15 @@ func BearerPresent(headers map[string]string) bool {
 	return false
 }
 
+func VirtualKeyPresent(headers map[string]string) bool {
+	for key, value := range headers {
+		if strings.EqualFold(key, "x-bf-vk") {
+			return strings.HasPrefix(strings.ToLower(strings.TrimSpace(value)), "sk-bf-")
+		}
+	}
+	return false
+}
+
 func StripProviderCredentials(headers map[string]string) {
 	for _, name := range []string{"Authorization", "x-api-key", "x-goog-api-key", DirectKeyHeader} {
 		DeleteHeader(headers, name)

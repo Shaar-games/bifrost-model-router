@@ -49,6 +49,9 @@ func TestInstallUninstallAndRestore(t *testing.T) {
 	if !strings.Contains(string(installed), "requires_openai_auth = true") {
 		t.Fatalf("profile missing from %s", installed)
 	}
+	if !strings.Contains(string(installed), `env_http_headers = { "x-bf-vk" = "BIFROST_API_KEY" }`) {
+		t.Fatalf("profile is missing Bifrost virtual-key environment mapping: %s", installed)
+	}
 	_, found, err := Uninstall(path, now.Add(time.Second))
 	if err != nil || !found {
 		t.Fatalf("uninstall: found=%v err=%v", found, err)

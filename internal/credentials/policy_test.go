@@ -50,3 +50,22 @@ func TestStripProviderCredentialsCaseInsensitive(t *testing.T) {
 		t.Fatalf("headers after strip = %#v", headers)
 	}
 }
+
+func TestVirtualKeyPresent(t *testing.T) {
+	for name, test := range map[string]struct {
+		headers map[string]string
+		want    bool
+	}{
+		"valid":      {map[string]string{"X-Bf-Vk": "sk-bf-example"}, true},
+		"whitespace": {map[string]string{"x-bf-vk": "  sk-bf-example  "}, true},
+		"missing":    {map[string]string{}, false},
+		"empty":      {map[string]string{"x-bf-vk": ""}, false},
+		"wrong kind": {map[string]string{"x-bf-vk": "provider-key"}, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := VirtualKeyPresent(test.headers); got != test.want {
+				t.Fatalf("VirtualKeyPresent() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}

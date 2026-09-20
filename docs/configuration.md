@@ -32,3 +32,5 @@ Never put key literals in a tracked config or Nix expression.
 Codex provider configuration is user-level. Generate it with `router profile
 render` or install it reversibly with `router profile install`. The generated
 profile uses the Responses wire API and Codex's native OpenAI authentication.
+It also maps the `x-bf-vk` header from `BIFROST_API_KEY`, so every gateway
+request is authorized independently by a Bifrost-managed virtual key.
