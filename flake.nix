@@ -479,13 +479,13 @@
                 }
                 JSON
                 ${self.packages.${system}.bifrost}/bin/bifrost-http \
-                  -app-dir $TMPDIR/app -host 127.0.0.1 -port 18080 \
+                  -app-dir $TMPDIR/app -host 127.0.0.1 -port 18079 \
                   >$TMPDIR/bifrost.log 2>&1 &
                 server_pid=$!
                 trap 'kill $server_pid 2>/dev/null || true' EXIT
                 ready=0
                 for attempt in $(seq 1 60); do
-                  if curl --fail --silent http://127.0.0.1:18080/health >/dev/null; then
+                  if curl --fail --silent http://127.0.0.1:18079/health >/dev/null; then
                     ready=1
                     break
                   fi
