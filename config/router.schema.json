@@ -19,6 +19,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["credential_mode", "responses_mode"],
       "properties": {
+		"display_name": { "type": "string", "minLength": 1 },
         "credential_mode": { "enum": ["bifrost", "request_passthrough"] },
         "responses_mode": { "$ref": "#/$defs/responsesMode" },
         "adapter": { "$ref": "#/$defs/adapter" },

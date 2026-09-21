@@ -5,11 +5,13 @@ hosted_tool_fallback_model: openai/gpt-5.6-luna
 
 providers:
   openai:
+    display_name: OpenAI
     credential_mode: request_passthrough
     responses_mode: native
     adapter: native
     discover_models: true
   managed:
+    display_name: Managed
     credential_mode: bifrost
     responses_mode: chat_polyfill
     adapter: single-system-message

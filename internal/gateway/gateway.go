@@ -14,6 +14,7 @@ import (
 
 	"github.com/applyinnovations/bifrost-model-router/internal/catalog"
 	"github.com/applyinnovations/bifrost-model-router/internal/config"
+	"github.com/applyinnovations/bifrost-model-router/internal/editorial"
 	responsescompat "github.com/applyinnovations/bifrost-model-router/internal/responses"
 )
 
@@ -29,6 +30,7 @@ type Handler struct {
 	bifrostProxy    *httputil.ReverseProxy
 	client          *http.Client
 	chatGPTModelURL string
+	nameLookup      catalog.NameLookup
 }
 
 func New(cfg config.Config, bifrostURL, chatGPTURL string) (*Handler, error) {
@@ -52,6 +54,7 @@ func New(cfg config.Config, bifrostURL, chatGPTURL string) (*Handler, error) {
 		bifrostProxy:    proxy,
 		client:          &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }},
 		chatGPTModelURL: "/backend-api/codex/models",
+		nameLookup:      editorial.NewOpenRouterResolver().Lookup,
 	}, nil
 }
 
@@ -153,7 +156,7 @@ func (h *Handler) serveModels(w http.ResponseWriter, req *http.Request) {
 		_, _ = w.Write(bifrostBody)
 		return
 	}
-	merged, err := mergeCatalogs(directBody, bifrostBody, h.cfg)
+	merged, err := mergeCatalogs(directBody, bifrostBody, h.cfg, h.nameLookup)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "catalog_invalid", "an upstream returned an invalid model catalog")
 		return
@@ -198,7 +201,7 @@ func copyChatGPTHeaders(dst, src http.Header) {
 	}
 }
 
-func mergeCatalogs(direct, bifrost []byte, cfg config.Config) ([]byte, error) {
+func mergeCatalogs(direct, bifrost []byte, cfg config.Config, lookup catalog.NameLookup) ([]byte, error) {
 	var directCatalog map[string]json.RawMessage
 	var bifrostCatalog map[string]json.RawMessage
 	if err := json.Unmarshal(direct, &directCatalog); err != nil {
@@ -252,6 +255,26 @@ func mergeCatalogs(direct, bifrost []byte, cfg config.Config) ([]byte, error) {
 			continue
 		}
 		merged = append(merged, raw)
+	}
+	for i, raw := range merged {
+		var model map[string]any
+		if json.Unmarshal(raw, &model) != nil {
+			continue
+		}
+		identity := stringValue(model, "slug")
+		if identity == "" {
+			identity = stringValue(model, "id")
+		}
+		resolved, ok := cfg.ResolveModel(identity)
+		if !ok {
+			continue
+		}
+		catalog.DecorateModel(model, resolved, cfg, lookup)
+		encoded, err := json.Marshal(model)
+		if err != nil {
+			return nil, err
+		}
+		merged[i] = encoded
 	}
 	models, err := json.Marshal(merged)
 	if err != nil {

@@ -109,7 +109,7 @@ func TestHydrateFlowsThroughDiscoveredModelsAndHidesAbsentOverrides(t *testing.T
 	for _, model := range decoded.Models {
 		switch model["slug"] {
 		case "other/new-model":
-			foundNew = model["display_name"] == "New Model" && model["context_window"] == float64(64000) && model["future"] != nil
+			foundNew = model["display_name"] == "New Model [Other]" && model["context_window"] == float64(64000) && model["future"] != nil
 		case "other/b":
 			foundAbsentOverride = true
 		}
@@ -137,7 +137,7 @@ func TestHydrateMapsBifrostNameToCodexDisplayName(t *testing.T) {
 	if err := json.Unmarshal(out, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if modelBySlug(decoded.Models, "other/new-model")["display_name"] != "New Model (fast)" {
+	if modelBySlug(decoded.Models, "other/new-model")["display_name"] != "New Model (fast) [Other]" {
 		t.Fatalf("hydrated model = %s", out)
 	}
 }
@@ -160,7 +160,7 @@ func TestHydratePrefersCodexDisplayNameOverBifrostName(t *testing.T) {
 	if err := json.Unmarshal(out, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if modelBySlug(decoded.Models, "other/new-model")["display_name"] != "Codex Name" {
+	if modelBySlug(decoded.Models, "other/new-model")["display_name"] != "Codex Name [Other]" {
 		t.Fatalf("hydrated model = %s", out)
 	}
 }
@@ -193,7 +193,7 @@ func TestHydrateCanonicalizesDiscoveredIDAndAppliesNameOverride(t *testing.T) {
 	if err := json.Unmarshal(out, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if len(decoded.Models) < 1 || decoded.Models[0]["id"] != "other/vendor/reasoner" || decoded.Models[0]["slug"] != "other/vendor/reasoner" || decoded.Models[0]["display_name"] != "Reasoner Pro" {
+	if len(decoded.Models) < 1 || decoded.Models[0]["id"] != "other/vendor/reasoner" || decoded.Models[0]["slug"] != "other/vendor/reasoner" || decoded.Models[0]["display_name"] != "Reasoner Pro [Other]" {
 		t.Fatalf("hydrated model = %s", out)
 	}
 }
@@ -225,7 +225,37 @@ func TestHydratePreservesUpstreamContextAndGeneratesAdjacentVariant(t *testing.T
 	if base["context_window"] != float64(272000) || base["max_context_window"] != float64(872000) || base["effective_context_window_percent"] != float64(80) || base["supports_experimental_context"] != true || base["future"] == nil {
 		t.Fatalf("base metadata was overwritten: %#v", base)
 	}
-	if variant["slug"] != "a-872k" || variant["display_name"] != "Upstream A (872K)" || variant["context_window"] != float64(872000) || variant["max_context_window"] != float64(872000) || variant["effective_context_window_percent"] != float64(95) {
+	if variant["slug"] != "a-872k" || variant["display_name"] != "Upstream A (872K) [OpenAI]" || variant["context_window"] != float64(872000) || variant["max_context_window"] != float64(872000) || variant["effective_context_window_percent"] != float64(95) {
 		t.Fatalf("variant = %#v", variant)
+	}
+}
+
+func TestHydratePrefersEditorialNameAndUsesConfiguredProviderLabel(t *testing.T) {
+	cfg := testConfig(t)
+	provider := cfg.Providers["other"]
+	provider.DisplayName = "Paid Plan"
+	provider.DiscoverModels = true
+	cfg.Providers["other"] = provider
+	if err := cfg.ApplyDefaultsAndValidate(); err != nil {
+		t.Fatal(err)
+	}
+	out, err := HydrateWithNames(
+		[]byte(`{"models":[{"id":"other/new-model","name":"new-model (fast)"}]}`),
+		cfg,
+		func(provider, upstream string) (string, bool) {
+			return "Publisher: New Model", provider == "other" && upstream == "new-model"
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Models []map[string]any `json:"models"`
+	}
+	if err := json.Unmarshal(out, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if got := modelBySlug(decoded.Models, "other/new-model")["display_name"]; got != "Publisher: New Model [Paid Plan]" {
+		t.Fatalf("display_name = %q", got)
 	}
 }

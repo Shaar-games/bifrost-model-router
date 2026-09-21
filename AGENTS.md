@@ -136,10 +136,15 @@ users do not need to regenerate configuration when their provider adds a model.
 Provider-level `codex_defaults` supply conservative metadata for new models,
 while fields returned by the upstream catalog take precedence.
 
-If discovery does not return `display_name`, derive a readable fallback or add
-exact `model_name_overrides` for only the requested models. Do not replace
-dynamic discovery with a static catalog merely to improve labels. Preserve
-upstream display names and reasoning-level metadata whenever they are present.
+Use OpenRouter's editorial catalog as the primary display-name source when an
+exact or unambiguous model-ID match exists. This lookup is naming metadata
+only: never use it to infer account availability, routing, permissions,
+capabilities, context windows, or reasoning support. Fall back to the
+configured provider's `display_name`, then derive a readable model-ID label or
+add exact `model_name_overrides` for exceptions. Append the configured provider
+source in brackets to every Codex label so duplicate models remain
+distinguishable across plans. Do not replace dynamic discovery with a static
+catalog merely to improve labels. Preserve upstream reasoning-level metadata.
 
 To offer an optional managed-provider model allowlist without restoring a
 static router catalog:

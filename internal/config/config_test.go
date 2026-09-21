@@ -250,6 +250,27 @@ func TestFromAnyRejectsUnknownFields(t *testing.T) {
 	}
 }
 
+func TestProviderDisplayName(t *testing.T) {
+	cfg := Config{Providers: map[string]ProviderProfile{
+		"openai":       {},
+		"openrouter":   {},
+		"nvidia-build": {},
+		"custom-plan":  {DisplayName: "Team Plan"},
+	}}
+	if got := cfg.ProviderDisplayName("openai"); got != "OpenAI" {
+		t.Fatalf("OpenAI label = %q", got)
+	}
+	if got := cfg.ProviderDisplayName("nvidia-build"); got != "NVIDIA Build" {
+		t.Fatalf("NVIDIA label = %q", got)
+	}
+	if got := cfg.ProviderDisplayName("openrouter"); got != "OpenRouter" {
+		t.Fatalf("OpenRouter label = %q", got)
+	}
+	if got := cfg.ProviderDisplayName("custom-plan"); got != "Team Plan" {
+		t.Fatalf("custom label = %q", got)
+	}
+}
+
 func TestHostedToolFallbackMustBeNativeRequestPassthroughModel(t *testing.T) {
 	t.Run("canonicalizes alias", func(t *testing.T) {
 		cfg, err := Decode(strings.NewReader(`

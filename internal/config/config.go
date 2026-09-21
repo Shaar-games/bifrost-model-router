@@ -39,12 +39,35 @@ type Config struct {
 }
 
 type ProviderProfile struct {
+	DisplayName        string            `json:"display_name,omitempty" yaml:"display_name,omitempty"`
 	CredentialMode     CredentialMode    `json:"credential_mode" yaml:"credential_mode"`
 	ResponsesMode      ResponsesMode     `json:"responses_mode" yaml:"responses_mode"`
 	Adapter            string            `json:"adapter,omitempty" yaml:"adapter,omitempty"`
 	DiscoverModels     bool              `json:"discover_models,omitempty" yaml:"discover_models,omitempty"`
 	ModelNameOverrides map[string]string `json:"model_name_overrides,omitempty" yaml:"model_name_overrides,omitempty"`
 	CodexDefaults      CodexProfile      `json:"codex_defaults,omitempty" yaml:"codex_defaults,omitempty"`
+}
+
+func (c Config) ProviderDisplayName(name string) string {
+	if displayName := strings.TrimSpace(c.Providers[name].DisplayName); displayName != "" {
+		return displayName
+	}
+	parts := strings.FieldsFunc(name, func(r rune) bool { return r == '-' || r == '_' })
+	for i, part := range parts {
+		switch strings.ToLower(part) {
+		case "openai":
+			parts[i] = "OpenAI"
+		case "openrouter":
+			parts[i] = "OpenRouter"
+		case "nvidia":
+			parts[i] = "NVIDIA"
+		default:
+			runes := []rune(part)
+			runes[0] = []rune(strings.ToUpper(string(runes[0])))[0]
+			parts[i] = string(runes)
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 type ReasoningLevel struct {
@@ -230,6 +253,9 @@ func (c *Config) ApplyDefaultsAndValidate() error {
 }
 
 func validateProvider(name string, p ProviderProfile) error {
+	if p.DisplayName != "" && strings.TrimSpace(p.DisplayName) == "" {
+		return fmt.Errorf("provider %q display_name cannot be blank", name)
+	}
 	switch p.CredentialMode {
 	case CredentialBifrost:
 	case CredentialRequestPassthrough:

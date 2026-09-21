@@ -8,6 +8,8 @@ concept.
 
 Provider fields:
 
+- `display_name`: optional readable source label appended to every model as
+  `[Provider]`. When omitted, the provider key is humanized.
 - `credential_mode`: `request_passthrough` only for the exact `openai`
   provider, otherwise `bifrost`.
 - `responses_mode`: `native`, `chat_polyfill`, or `unsupported`.
@@ -16,8 +18,8 @@ Provider fields:
 - `discover_models`: accept and publish models returned by that provider's
   authenticated model catalog without requiring per-model configuration.
 - `model_name_overrides`: optional exact upstream-model-ID to display-name
-  mappings. Use this only when discovery omits a readable `display_name`;
-  upstream names otherwise flow through unchanged.
+  mappings. Explicit overrides take precedence over editorial and upstream
+  names.
 - `codex_defaults`: conservative Codex metadata applied to newly discovered
   models when the upstream catalog omits those fields.
 
@@ -36,9 +38,14 @@ disabled and configure a verified static model list.
 Discovered catalog IDs are normalized to canonical `provider/model` IDs before
 Codex sees them. This is required when the upstream model ID itself contains a
 slash: Codex must send the configured Bifrost provider, not interpret the
-upstream vendor prefix as a provider. Display names, descriptions, default
-reasoning levels, and supported reasoning levels returned by compatible
-upstreams are preserved; configured overrides take precedence only for names.
+upstream vendor prefix as a provider. The router uses OpenRouter's public model
+catalog as the primary source of standardized editorial names. Matching is
+exact or by an unambiguous model-ID suffix; OpenRouter never controls model
+availability, routing, permissions, or capabilities. If that catalog is
+unavailable or has no safe match, the provider's display name is used. Every
+name ends in the configured source label, such as `[Managed]`, so the same
+model remains distinguishable across providers. Descriptions and reasoning
+metadata continue to come from the configured provider.
 
 `upstream_model` controls the provider model sent after resolution and defaults
 to the portion of the canonical slug after `provider/`. Optional

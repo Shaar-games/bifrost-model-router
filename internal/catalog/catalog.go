@@ -12,7 +12,13 @@ type responseEnvelope struct {
 	Models []map[string]any `json:"models"`
 }
 
+type NameLookup func(provider, upstreamModel string) (string, bool)
+
 func Hydrate(body []byte, cfg config.Config) ([]byte, error) {
+	return HydrateWithNames(body, cfg, nil)
+}
+
+func HydrateWithNames(body []byte, cfg config.Config, lookup NameLookup) ([]byte, error) {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return nil, fmt.Errorf("decode model catalog: %w", err)
@@ -58,11 +64,47 @@ func Hydrate(body []byte, cfg config.Config) ([]byte, error) {
 		seen[slug] = true
 		out = appendConfiguredVariants(out, seen, base, slug, cfg, cfg.Instructions)
 	}
+	for _, model := range out {
+		identity := stringField(model, "slug")
+		if identity == "" {
+			identity = stringField(model, "id")
+		}
+		if resolved, ok := cfg.ResolveModel(identity); ok {
+			DecorateModel(model, resolved, cfg, lookup)
+		}
+	}
 	encoded, err := json.Marshal(responseEnvelope{Models: out})
 	if err != nil {
 		return nil, fmt.Errorf("encode hydrated catalog: %w", err)
 	}
 	return encoded, nil
+}
+
+// DecorateModel applies editorial naming and a configured-provider suffix.
+// Editorial metadata never affects routing, availability, or capabilities.
+func DecorateModel(model map[string]any, resolved config.ResolvedModel, cfg config.Config, lookup NameLookup) {
+	providerLabel := cfg.ProviderDisplayName(resolved.Model.Provider)
+	suffix := " [" + providerLabel + "]"
+	current := strings.TrimSpace(stringField(model, "display_name"))
+	current = strings.TrimSpace(strings.TrimSuffix(current, suffix))
+	name := current
+	if override := strings.TrimSpace(resolved.Provider.ModelNameOverrides[resolved.UpstreamModel]); override != "" {
+		name = override
+	} else if lookup != nil {
+		if editorial, ok := lookup(resolved.Model.Provider, resolved.UpstreamModel); ok && strings.TrimSpace(editorial) != "" {
+			name = strings.TrimSpace(editorial)
+		}
+	}
+	if name == "" {
+		name = resolved.Slug
+	}
+	if resolved.Variant != nil {
+		variantSuffix := " (" + contextLabel(resolved.Variant.ContextWindow) + ")"
+		if !strings.HasSuffix(name, variantSuffix) {
+			name += variantSuffix
+		}
+	}
+	model["display_name"] = name + suffix
 }
 
 func decodeModels(raw map[string]json.RawMessage) ([]map[string]any, error) {
