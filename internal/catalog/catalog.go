@@ -107,8 +107,15 @@ func HydrateModel(original map[string]any, resolved config.ResolvedModel, instru
 	result["id"] = resolved.Slug
 	if displayName := resolved.Provider.ModelNameOverrides[resolved.UpstreamModel]; displayName != "" {
 		result["display_name"] = displayName
+	} else if displayName := stringField(result, "display_name"); strings.TrimSpace(displayName) != "" {
+		result["display_name"] = displayName
+	} else if name := stringField(result, "name"); strings.TrimSpace(name) != "" {
+		// Bifrost's normalized model schema exposes an upstream OpenAI-compatible
+		// display_name as name. Codex only reads display_name in its model picker,
+		// so bridge the normalized field back to the Codex catalog shape.
+		result["display_name"] = name
 	} else {
-		setMissing(result, "display_name", p.DisplayName)
+		result["display_name"] = p.DisplayName
 	}
 	setMissing(result, "description", p.Description)
 	setMissing(result, "default_reasoning_level", p.DefaultReasoningLevel)
