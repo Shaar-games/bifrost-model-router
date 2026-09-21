@@ -259,3 +259,24 @@ func TestHydratePrefersEditorialNameAndUsesConfiguredProviderLabel(t *testing.T)
 		t.Fatalf("display_name = %q", got)
 	}
 }
+
+func TestDecorateCatalogPreservesEnvelopeAndUsesEditorialName(t *testing.T) {
+	cfg := testConfig(t)
+	body := []byte(`{"models":[{"slug":"other/b","display_name":"b [Other]"}],"recommended_model":"other/b"}`)
+	out, err := DecorateCatalog(body, cfg, func(provider, upstream string) (string, bool) {
+		return "Publisher: Better Name", provider == "other" && upstream == "b"
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Models           []map[string]any `json:"models"`
+		RecommendedModel string           `json:"recommended_model"`
+	}
+	if err := json.Unmarshal(out, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.RecommendedModel != "other/b" || modelBySlug(decoded.Models, "other/b")["display_name"] != "Publisher: Better Name [Other]" {
+		t.Fatalf("decorated catalog = %s", out)
+	}
+}

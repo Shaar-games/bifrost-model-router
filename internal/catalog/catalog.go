@@ -80,6 +80,35 @@ func HydrateWithNames(body []byte, cfg config.Config, lookup NameLookup) ([]byte
 	return encoded, nil
 }
 
+// DecorateCatalog applies display-name enrichment to an already hydrated
+// Codex catalog while preserving its envelope and all unknown fields.
+func DecorateCatalog(body []byte, cfg config.Config, lookup NameLookup) ([]byte, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("decode model catalog: %w", err)
+	}
+	models, err := decodeModels(raw)
+	if err != nil {
+		return nil, err
+	}
+	for _, model := range models {
+		identity := stringField(model, "slug")
+		if identity == "" {
+			identity = stringField(model, "id")
+		}
+		if resolved, ok := cfg.ResolveModel(identity); ok {
+			DecorateModel(model, resolved, cfg, lookup)
+		}
+	}
+	encoded, err := json.Marshal(models)
+	if err != nil {
+		return nil, fmt.Errorf("encode model entries: %w", err)
+	}
+	raw["models"] = encoded
+	delete(raw, "data")
+	return json.Marshal(raw)
+}
+
 // DecorateModel applies editorial naming and a configured-provider suffix.
 // Editorial metadata never affects routing, availability, or capabilities.
 func DecorateModel(model map[string]any, resolved config.ResolvedModel, cfg config.Config, lookup NameLookup) {

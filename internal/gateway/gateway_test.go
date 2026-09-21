@@ -139,6 +139,31 @@ func TestModelsPreserveDirectMetadataAndAppendManagedModels(t *testing.T) {
 	}
 }
 
+func TestModelsEditorializesManagedFallbackWhenDirectCatalogFails(t *testing.T) {
+	bifrost := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"models":[{"slug":"managed/text-model","display_name":"text-model [Managed]"}]}`))
+	}))
+	defer bifrost.Close()
+	chatGPT := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	}))
+	defer chatGPT.Close()
+	handler, err := New(testConfig(t), bifrost.URL, chatGPT.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler.nameLookup = func(provider, upstream string) (string, bool) {
+		return "Publisher: Text Model", provider == "managed" && upstream == "text-model"
+	}
+	req := httptest.NewRequest(http.MethodGet, "/v1/models?client_version=test", nil)
+	req.Header.Set("x-bf-vk", "sk-bf-test")
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK || !strings.Contains(resp.Body.String(), `"display_name":"Publisher: Text Model [Managed]"`) {
+		t.Fatalf("status = %d body = %s", resp.Code, resp.Body.String())
+	}
+}
+
 func TestResponsesRejectsUnknownContextVariant(t *testing.T) {
 	handler, err := New(testConfig(t), "http://127.0.0.1:1", "http://127.0.0.1:1")
 	if err != nil {

@@ -150,6 +150,11 @@ func (h *Handler) serveModels(w http.ResponseWriter, req *http.Request) {
 	}
 	directBody, directStatus, directErr := h.fetch(req, h.chatGPTURL, h.chatGPTModelURL, true)
 	if directErr != nil || directStatus < 200 || directStatus >= 300 {
+		if bifrostStatus >= 200 && bifrostStatus < 300 {
+			if decorated, decorateErr := catalog.DecorateCatalog(bifrostBody, h.cfg, h.nameLookup); decorateErr == nil {
+				bifrostBody = decorated
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
 		w.WriteHeader(bifrostStatus)
