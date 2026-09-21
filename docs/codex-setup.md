@@ -19,10 +19,12 @@ Open this repository in Codex and describe the outcome at any level of detail:
 > Set this up for me.
 
 That starts requirements gathering. Codex should ask which provider plans or
-API accounts you want to add, whether to retain OpenAI through your Codex login,
-which provider should be the default, and any scope it cannot safely infer. It
-then researches current provider documentation and account-visible models
-rather than requiring you to supply Bifrost configuration.
+API accounts you want to add and any provider-specific scope it cannot safely
+infer. It always retains OpenAI through your Codex login, detects and preserves
+an existing router setup, and defaults new threads to `gpt-5.6-sol` with
+`medium` reasoning. It does not ask you to make those decisions. It then
+researches current provider documentation and account-visible models rather
+than requiring you to supply Bifrost configuration.
 
 The agent follows [the repository onboarding instructions](../AGENTS.md).
 
@@ -55,15 +57,15 @@ After requirements and credentials are complete, Codex invokes:
 ./scripts/setup-local.sh \
   --config ~/.config/bifrost-model-router/config.json \
   --env-file ~/.config/bifrost-model-router/providers.env \
-  --model DEFAULT_MODEL \
-  --reasoning-effort medium \
   --accept-plaintext-key \
   --accept-new-threads-only \
   --replace
 ```
 
-Humans normally do not need to construct this command. Running the script
-without agent flags remains supported and presents interactive notices.
+Humans normally do not need to construct this command. The executor defaults to
+`gpt-5.6-sol` with `medium` reasoning; model flags are used only for an explicit
+override or verified availability fallback. Running the script without agent
+flags remains supported and presents interactive notices.
 
 The default image is the public
 `ghcr.io/applyinnovations/bifrost-model-router:main`. To use another published
@@ -104,7 +106,7 @@ The selected model and generated virtual key replace the placeholders in the
 installed configuration:
 
 ```toml
-model = "DEFAULT_MODEL"
+model = "gpt-5.6-sol"
 model_provider = "bifrost-router"
 model_reasoning_effort = "medium"
 
@@ -132,9 +134,10 @@ docker ps --filter name=bifrost-model-router
 curl --fail http://127.0.0.1/health
 ```
 
-Then start a **new** Codex thread. It should use the default model and reasoning
-effort agreed during requirements gathering. Threads that were open before
-setup are expected to remain on their previous provider and model.
+Then start a **new** Codex thread. It should use `gpt-5.6-sol` with `medium`
+reasoning unless you explicitly requested an override or it required a verified
+availability fallback. Threads that were open before setup are expected to
+remain on their previous provider and model.
 
 ## Troubleshooting
 

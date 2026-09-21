@@ -14,9 +14,16 @@ catalogs, or Codex provider configuration.
 - First establish which provider plans or API accounts the user wants available
   in Codex. Examples include OpenRouter, MiniMax, Z.AI, Voke, Fireworks, and any
   other Bifrost-supported or OpenAI-compatible provider.
-- Clarify whether existing providers should be preserved, which plan/model
-  should be the default, and whether the user wants OpenAI through their Codex
-  login retained.
+- Always retain OpenAI through the user's Codex login. This is an invariant,
+  not a requirements question.
+- Inspect `~/.config/bifrost-model-router`, the managed Codex block, and the
+  named Docker containers to detect first-time versus additive setup. Preserve
+  existing providers, credentials, and model entries by default. Ask only if
+  the user explicitly requests removal or discovered state is contradictory.
+- Default new Codex threads to `gpt-5.6-sol` with `medium` reasoning. Do not ask
+  the user to choose a default. Change it only when the user explicitly asks or
+  authenticated discovery proves it unavailable; in that case select the
+  closest available OpenAI coding model and explain the fallback.
 - Resolve informal names and likely typos through research, then confirm the
   interpretation instead of rejecting the request.
 - Explain material constraints and tradeoffs in plain language. Ask for user
@@ -41,8 +48,7 @@ For each requested provider, determine:
    Responses.
 6. Verified model capabilities, context windows, modalities, reasoning levels,
    and tool support.
-7. The desired default model and reasoning effort.
-8. Whether this is an additive reconfiguration or a replacement.
+7. Existing local router state that must be merged and preserved.
 
 Use current official provider documentation as the primary source. Use an
 authenticated model-list endpoint when it is account-aware. If discovery is
@@ -112,10 +118,11 @@ Never forward the Codex OpenAI bearer to a managed provider.
 ## Apply the setup
 
 Before applying, summarize the resolved scope: providers, plans, enabled
-models, default model, credential variable names, and any unverified
-capabilities. Tell the user that the local Bifrost virtual key is stored in
-their mode-`0600` Codex config and that provider/model defaults affect only new
-threads.
+models, credential variable names, and any unverified capabilities. State that
+OpenAI passthrough remains enabled and that the default is `gpt-5.6-sol` with
+`medium` reasoning unless an automatic availability fallback was necessary.
+Tell the user that the local Bifrost virtual key is stored in their mode-`0600`
+Codex config and that provider/model defaults affect only new threads.
 
 Then run the low-level executor non-interactively:
 
@@ -123,8 +130,6 @@ Then run the low-level executor non-interactively:
 ./scripts/setup-local.sh \
   --config "$HOME/.config/bifrost-model-router/config.json" \
   --env-file "$HOME/.config/bifrost-model-router/providers.env" \
-  --model DEFAULT_MODEL \
-  --reasoning-effort EFFORT \
   --accept-plaintext-key \
   --accept-new-threads-only \
   --replace
@@ -133,7 +138,9 @@ Then run the low-level executor non-interactively:
 Omit `--env-file` only when the generated config has no managed-provider
 credential references. Do not pass `--replace` unless the existing named
 containers belong to this project; inspect them first. The setup script backs
-up and preserves unrelated Codex configuration.
+up and preserves unrelated Codex configuration. Its defaults are
+`gpt-5.6-sol` and `medium`; pass `--model` or `--reasoning-effort` only for an
+explicit user override or verified availability fallback.
 
 ## Verification and handoff
 

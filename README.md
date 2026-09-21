@@ -20,6 +20,10 @@ and configures only models available to those plans. You can name one or many
 providers, including OpenRouter, MiniMax, Z.AI, Voke, Fireworks, or another
 Bifrost-supported or OpenAI-compatible service.
 
+OpenAI through the existing Codex login is always retained. Codex detects and
+merges an existing router setup automatically, and defaults new threads to
+`gpt-5.6-sol` with `medium` reasoning unless you explicitly request otherwise.
+
 Codex handles Docker, router configuration, catalog filtering, validation,
 backups, and Codex settings. The only required secret-handling step is filling
 the credential placeholders it creates in the mode-`0600` file
