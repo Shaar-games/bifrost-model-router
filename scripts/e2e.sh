@@ -137,9 +137,10 @@ processes+=("$!")
 
 ready=0
 # A clean Bifrost database currently applies a long migration chain. Shared CI
-# runners can need more than two minutes even though steady-state startup is
-# fast, so allow five minutes while still polling at a short interval.
-for _ in $(seq 1 1200); do
+# runners can need several minutes even though steady-state startup is fast,
+# especially when the full flake check builds in parallel. Allow ten minutes
+# while still polling at a short interval.
+for _ in $(seq 1 2400); do
 	if curl --fail --silent http://127.0.0.1:18080/health >/dev/null; then
 		ready=1
 		break
