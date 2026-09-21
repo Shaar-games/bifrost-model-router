@@ -119,6 +119,61 @@ func TestHydrateFlowsThroughDiscoveredModelsAndHidesAbsentOverrides(t *testing.T
 	}
 }
 
+func TestHydrateMapsBifrostNameToCodexDisplayName(t *testing.T) {
+	cfg := testConfig(t)
+	provider := cfg.Providers["other"]
+	provider.DiscoverModels = true
+	cfg.Providers["other"] = provider
+	if err := cfg.ApplyDefaultsAndValidate(); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Hydrate([]byte(`{"models":[{"id":"other/new-model","name":"New Model (fast)"}]}`), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Models []map[string]any `json:"models"`
+	}
+	if err := json.Unmarshal(out, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if modelBySlug(decoded.Models, "other/new-model")["display_name"] != "New Model (fast)" {
+		t.Fatalf("hydrated model = %s", out)
+	}
+}
+
+func TestHydratePrefersCodexDisplayNameOverBifrostName(t *testing.T) {
+	cfg := testConfig(t)
+	provider := cfg.Providers["other"]
+	provider.DiscoverModels = true
+	cfg.Providers["other"] = provider
+	if err := cfg.ApplyDefaultsAndValidate(); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Hydrate([]byte(`{"models":[{"id":"other/new-model","name":"Normalized Name","display_name":"Codex Name"}]}`), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Models []map[string]any `json:"models"`
+	}
+	if err := json.Unmarshal(out, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if modelBySlug(decoded.Models, "other/new-model")["display_name"] != "Codex Name" {
+		t.Fatalf("hydrated model = %s", out)
+	}
+}
+
+func modelBySlug(models []map[string]any, slug string) map[string]any {
+	for _, model := range models {
+		if model["slug"] == slug {
+			return model
+		}
+	}
+	return nil
+}
+
 func TestHydrateCanonicalizesDiscoveredIDAndAppliesNameOverride(t *testing.T) {
 	cfg := testConfig(t)
 	provider := cfg.Providers["other"]
