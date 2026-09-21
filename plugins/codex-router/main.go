@@ -102,8 +102,12 @@ func PreLLMHook(ctx *schemas.BifrostContext, req *schemas.BifrostRequest) (*sche
 	if req == nil || (req.RequestType != schemas.ResponsesRequest && req.RequestType != schemas.ResponsesStreamRequest) {
 		return req, nil, nil
 	}
-	_, model, _ := req.GetRequestFields()
-	resolved, ok := currentConfig().ResolveModel(model)
+	provider, model, _ := req.GetRequestFields()
+	identity := model
+	if provider != "" && !strings.Contains(model, "/") {
+		identity = string(provider) + "/" + model
+	}
+	resolved, ok := currentConfig().ResolveModel(identity)
 	if !ok {
 		return req, shortCircuit(400, "unresolved_model", "model is not present in the router catalog"), nil
 	}

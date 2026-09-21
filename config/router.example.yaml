@@ -8,10 +8,15 @@ providers:
     credential_mode: request_passthrough
     responses_mode: native
     adapter: native
-  cerebras:
+    discover_models: true
+  managed:
     credential_mode: bifrost
     responses_mode: chat_polyfill
     adapter: single-system-message
+    discover_models: true
+    codex_defaults:
+      context_window: 131072
+      input_modalities: [text]
 
 models:
   openai/gpt-example:
@@ -45,10 +50,10 @@ models:
       context_window: 272000
       effective_context_window_percent: 95
       input_modalities: [text, image]
-  cerebras/example-model:
+  managed/example-model:
     aliases: [example-model]
     codex:
-      display_name: Cerebras Example
+      display_name: Managed Provider Example
       description: Example Chat Completions model exposed through the Responses polyfill.
       context_window: 131072
       effective_context_window_percent: 95

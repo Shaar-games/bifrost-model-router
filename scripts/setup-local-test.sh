@@ -15,26 +15,27 @@ test "$reasoning_effort" = "medium"
 
 mkdir -p "$test_root/input"
 jq '
-  .providers.zai = {
-    keys: [{name: "zai", value: "env.ZAI_API_KEY", models: ["glm-test"], weight: 1}]
+  .providers.managed = {
+    keys: [{name: "managed", value: "env.MANAGED_PROVIDER_API_KEY", models: ["*"], weight: 1}]
   } |
   .governance.virtual_keys[0].provider_configs += [{
-    provider: "zai", allowed_models: ["glm-test"], blacklisted_models: [], key_ids: ["*"]
+    provider: "managed", allowed_models: ["*"], blacklisted_models: [], key_ids: ["*"]
   }] |
-  .plugins[1].config.providers.zai = {
-    credential_mode: "bifrost", responses_mode: "chat_polyfill", adapter: "openai-chat"
+  .plugins[1].config.providers.managed = {
+    credential_mode: "bifrost", responses_mode: "chat_polyfill", adapter: "openai-chat",
+    discover_models: true, codex_defaults: {context_window: 64000, input_modalities: ["text"]}
   } |
-  .plugins[1].config.models["zai/glm-test"] = {
-    aliases: ["glm-test"], upstream_model: "glm-test",
+  .plugins[1].config.models["managed/text-model"] = {
+    aliases: ["text-model"], upstream_model: "text-model",
     codex: {context_window: 64000, input_modalities: ["text"]}
   }
 ' "$repo_dir/config/quickstart.json" >"$test_root/input/config.json"
-printf '%s\n' 'ZAI_API_KEY=test-only' >"$test_root/input/providers.env"
+printf '%s\n' 'MANAGED_PROVIDER_API_KEY=test-only' >"$test_root/input/providers.env"
 chmod 0600 "$test_root/input/providers.env"
 
 config_source="$test_root/input/config.json"
 provider_env="$test_root/input/providers.env"
-default_model="zai/glm-test"
+default_model="managed/text-model"
 reasoning_effort="medium"
 
 prepare_inputs
@@ -43,7 +44,7 @@ test -f "$runtime_config"
 test "$(stat -c '%a' "$runtime_config")" = 644
 
 install_codex_config sk-bf-test-only >/dev/null
-grep -Fqx 'model = "zai/glm-test"' "$codex_config"
+grep -Fqx 'model = "managed/text-model"' "$codex_config"
 grep -Fqx 'model_reasoning_effort = "medium"' "$codex_config"
 grep -Fqx 'http_headers = { "x-bf-vk" = "sk-bf-test-only" }' "$codex_config"
 test "$(stat -c '%a' "$codex_config")" = 600

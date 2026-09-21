@@ -46,7 +46,8 @@
         "openai": {
           "credential_mode": "request_passthrough",
           "responses_mode": "native",
-          "adapter": "native"
+          "adapter": "native",
+          "discover_models": true
         }
       },
       "models": {

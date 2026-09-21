@@ -13,11 +13,22 @@ Provider fields:
 - `responses_mode`: `native`, `chat_polyfill`, or `unsupported`.
 - `adapter`: `native`, `openai-chat`, `single-system-message`, or
   `strict-text-only`.
+- `discover_models`: accept and publish models returned by that provider's
+  authenticated model catalog without requiring per-model configuration.
+- `codex_defaults`: conservative Codex metadata applied to newly discovered
+  models when the upstream catalog omits those fields.
 
 Models use canonical `provider/model` slugs and may have unambiguous aliases.
 Model settings override provider Responses mode and adapter. Codex metadata is
 conservatively defaulted; a polyfilled model may advertise only text input and
 cannot claim hosted search or native image-detail support.
+
+With `discover_models: true`, upstream catalog entries flow into Codex as soon
+as they appear. Explicit model entries become metadata, alias, and context
+variant overrides; configured overrides absent from the authenticated upstream
+catalog are not advertised. Enable discovery only when the provider's model
+endpoint is account-aware. For providers without such an endpoint, leave it
+disabled and configure a verified static model list.
 
 `upstream_model` controls the provider model sent after resolution and defaults
 to the portion of the canonical slug after `provider/`. Optional

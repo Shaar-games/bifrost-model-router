@@ -65,7 +65,7 @@ in
       type = types.attrsOf types.path;
       default = { };
       example = {
-        CEREBRAS_API_KEY = "/run/secrets/cerebras-api-key";
+        MANAGED_PROVIDER_API_KEY = "/run/secrets/managed-provider-api-key";
       };
       description = "Environment variable names mapped to files loaded through systemd credentials.";
     };

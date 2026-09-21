@@ -1,9 +1,9 @@
 # Agent-managed Codex setup
 
 The recommended setup interface is a Codex agent. The agent gathers provider
-and plan requirements, generates an exact model allowlist, obtains credentials
-through a local env file, pulls the published image, and configures new Codex
-threads.
+and plan requirements, enables account-aware model discovery where available,
+obtains credentials through a local env file, pulls the published image, and
+configures new Codex threads.
 
 ## Quick start
 
@@ -40,8 +40,7 @@ creates:
 with mode `0600` and empty placeholders such as:
 
 ```dotenv
-ZAI_API_KEY=
-OPENROUTER_API_KEY=
+MANAGED_PROVIDER_API_KEY=
 ```
 
 Open that file locally, fill the values, save it, and tell Codex it is ready.
@@ -167,7 +166,7 @@ attached to an existing thread.
 For example:
 
 ```text
-The 'voke/glm-5.3-flash' model is not supported when using Codex with a
+The 'managed/text-model' model is not supported when using Codex with a
 ChatGPT account.
 ```
 

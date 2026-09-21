@@ -16,7 +16,7 @@ func initTestPlugin(t *testing.T) {
 		"hosted_tool_fallback_model": "openai/luna",
 		"providers": map[string]any{
 			"openai": map[string]any{"credential_mode": "request_passthrough", "responses_mode": "native"},
-			"other":  map[string]any{"credential_mode": "bifrost", "responses_mode": "chat_polyfill"},
+			"other":  map[string]any{"credential_mode": "bifrost", "responses_mode": "chat_polyfill", "discover_models": true},
 		},
 		"models": map[string]any{
 			"openai/a":    map[string]any{"codex": map[string]any{}},
@@ -137,6 +137,20 @@ func TestPreLLMSelectsPolyfill(t *testing.T) {
 	ctx := schemas.NewBifrostContext(context.Background(), time.Now().Add(time.Minute))
 	defer ctx.Cancel()
 	req := &schemas.BifrostRequest{RequestType: schemas.ResponsesStreamRequest, ResponsesRequest: &schemas.BifrostResponsesRequest{Provider: "other", Model: "b"}}
+	_, short, err := PreLLMHook(ctx, req)
+	if err != nil || short != nil {
+		t.Fatalf("short=%v err=%v", short, err)
+	}
+	if got, _ := ctx.Value(schemas.BifrostContextKeyChangeRequestType).(schemas.RequestType); got != schemas.ChatCompletionRequest {
+		t.Fatalf("change request type = %q", got)
+	}
+}
+
+func TestPreLLMSelectsPolyfillForDiscoveredModel(t *testing.T) {
+	initTestPlugin(t)
+	ctx := schemas.NewBifrostContext(context.Background(), time.Now().Add(time.Minute))
+	defer ctx.Cancel()
+	req := &schemas.BifrostRequest{RequestType: schemas.ResponsesRequest, ResponsesRequest: &schemas.BifrostResponsesRequest{Provider: "other", Model: "new-model"}}
 	_, short, err := PreLLMHook(ctx, req)
 	if err != nil || short != nil {
 		t.Fatalf("short=%v err=%v", short, err)

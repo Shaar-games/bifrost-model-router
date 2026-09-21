@@ -39,7 +39,10 @@ func (p *provider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/models") {
-		writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": []map[string]any{{"id": p.mode + "-model", "object": "model", "owned_by": "mock"}}})
+		writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": []map[string]any{
+			{"id": p.mode + "-model", "object": "model", "owned_by": "mock"},
+			{"id": p.mode + "-new-model", "object": "model", "owned_by": "mock"},
+		}})
 		return
 	}
 	var body struct {

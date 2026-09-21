@@ -42,7 +42,7 @@ The adjacent implementation proves several useful pieces:
 
 It also exposes the limitations this project should remove:
 
-- The plugin and configuration are tied to Cerebras and two hard-coded model names.
+- The plugin and configuration are tied to one managed provider and two hard-coded model names.
 - The model endpoint is replaced with a static catalog instead of hydrating upstream/Bifrost model records.
 - Compatibility behavior is selected by model-name matching rather than declared capabilities.
 - Request normalization is coupled to model-catalog serving in one file.
@@ -50,7 +50,7 @@ It also exposes the limitations this project should remove:
 - The current setup script replaces the user's Codex configuration and does not support one provider that safely splits OpenAI passthrough from Bifrost-owned provider credentials.
 - The proof of concept tests request hoisting well, but not streaming Responses event fidelity, auth isolation, provider capability selection, catalog merge semantics, or reproducible deployment.
 
-Reuse the behavioral tests and lessons, not the Cerebras-specific structure or binary artifact.
+Reuse the behavioral tests and lessons, not the provider-specific structure or binary artifact.
 
 ## 3. Constraints and design principles
 
@@ -189,7 +189,7 @@ Initial adapters:
 
 - `native`: no-op and validation of native-only advertised features.
 - `openai-chat`: generic Responses-to-OpenAI-compatible-Chat polyfill selection.
-- `single-system-message`: optional normalization for backends that permit only one leading system message; derived from the adjacent Cerebras behavior but activated by a capability flag.
+- `single-system-message`: optional normalization for backends that permit only one leading system message and activated by a capability flag.
 - `strict-text-only`: rejects image/file/audio content before it is lost.
 
 Adapters are dynamically selected from configuration. A new provider should normally require a model/provider profile only. New Go code is justified only for a genuinely different wire constraint.
@@ -208,7 +208,7 @@ providers:
     credential_mode: request_passthrough
     responses_mode: native
     adapter: native
-  cerebras:
+  managed:
     credential_mode: bifrost
     responses_mode: chat_polyfill
     adapter: single-system-message
@@ -221,7 +221,7 @@ models:
       context_window: 128000
       input_modalities: [text, image]
       supported_reasoning_levels: [low, medium, high]
-  cerebras/example-model:
+  managed/example-model:
     codex:
       display_name: Example Model
       context_window: 131072
@@ -477,7 +477,7 @@ Implement `httptest` upstreams for:
 
 - native OpenAI Responses;
 - OpenAI-compatible Chat-only;
-- Anthropic-like messages if exercised through Bifrost;
+- non-OpenAI native message APIs if exercised through Bifrost;
 - models endpoint with partial/nonstandard metadata;
 - rate limit, timeout, disconnect, malformed JSON, malformed SSE, and mid-stream failure.
 

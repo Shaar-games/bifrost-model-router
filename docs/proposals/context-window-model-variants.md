@@ -8,13 +8,13 @@ Scope: Codex model catalog hydration and provider routing
 
 The router should publish explicit context-window variants as ordinary model
 entries. A user selects a variant such as `gpt-5.6-sol-872k` or
-`voke/deepseek-v4-pro-1m` from the Codex model menu; the router advertises the
+`managed/text-pro-1m` from the Codex model menu; the router advertises the
 variant's context metadata but sends the provider's original model name
 upstream.
 
 An unsuffixed model always retains its upstream/default metadata. Merely
 enabling variants must not change the behavior, context budget, or compaction
-threshold of `gpt-5.6-sol`, `voke/glm-5.3-flash`, or any other base entry.
+threshold of `gpt-5.6-sol`, `managed/text-fast`, or any other base entry.
 
 Variants are explicitly configured. The router must not infer that every name
 ending in `-256k`, `-872k`, or `-1m` is a variant, because those strings can be
@@ -26,7 +26,7 @@ than silently routed to a base model.
 - Make context choices visible in the normal Codex model picker.
 - Preserve upstream defaults for every unsuffixed model.
 - Route all variants to the correct underlying provider model.
-- Support the same mechanism for OpenAI, Voke, and future providers.
+- Support the same mechanism for OpenAI and managed providers.
 - Keep authentication and hosted-tool routing independent from presentation
   slugs.
 - Prevent users from selecting context sizes beyond a verified provider limit.
@@ -48,9 +48,9 @@ Given the following configured variants:
 ```text
 GPT-5.6 Sol
 GPT-5.6 Sol (872K)
-DeepSeek V4 Pro (Voke)
-DeepSeek V4 Pro (256K, Voke)
-DeepSeek V4 Pro (1M, Voke)
+Managed Text Pro
+Managed Text Pro (256K)
+Managed Text Pro (1M)
 ```
 
 Codex receives these slugs:
@@ -58,9 +58,9 @@ Codex receives these slugs:
 ```text
 gpt-5.6-sol
 gpt-5.6-sol-872k
-voke/deepseek-v4-pro
-voke/deepseek-v4-pro-256k
-voke/deepseek-v4-pro-1m
+managed/text-pro
+managed/text-pro-256k
+managed/text-pro-1m
 ```
 
 Selecting `gpt-5.6-sol` uses the exact context metadata returned by the
@@ -112,9 +112,9 @@ models:
       - context_window: 872000
         effective_context_window_percent: 95
 
-  voke/deepseek-v4-pro:
-    aliases: [deepseek-v4-pro]
-    upstream_model: deepseek-v4-pro
+  managed/text-pro:
+    aliases: [text-pro]
+    upstream_model: text-pro
     codex:
       context_window: 256000
       max_context_window: 1000000
@@ -187,9 +187,9 @@ gpt-5.6-sol-872k
   -> openai/gpt-5.6-sol
   -> upstream gpt-5.6-sol
 
-voke/deepseek-v4-pro-1m
-  -> voke/deepseek-v4-pro
-  -> upstream deepseek-v4-pro
+managed/text-pro-1m
+  -> managed/text-pro
+  -> upstream text-pro
 ```
 
 The dispatch gateway must rewrite the request model using `upstream_model`, not
@@ -200,7 +200,7 @@ Credential selection happens from the resolved provider:
 
 - OpenAI request-passthrough variants use the caller's OpenAI authentication and
   Bifrost's ChatGPT passthrough route.
-- Voke and other managed-provider variants use Bifrost-held credentials and the
+- Managed-provider variants use Bifrost-held credentials and the
   configured Responses implementation or polyfill.
 
 Hosted-tool fallback is evaluated before final dispatch. Its configured target
@@ -310,10 +310,10 @@ router_hosted_tool_fallback_total{source_model,target_model}
 
 - Route `gpt-5.6-sol` and `gpt-5.6-sol-872k` to upstream
   `gpt-5.6-sol`.
-- Route all DeepSeek variants to upstream `deepseek-v4-pro` with Bifrost-managed
+- Route all managed variants to upstream `text-pro` with Bifrost-managed
   credentials.
 - Send OpenAI variants through the raw ChatGPT passthrough.
-- Send Voke variants through the Responses polyfill.
+- Send managed-provider variants through the Responses polyfill.
 - Reject an unknown `-512k` variant.
 - Prove that an actual provider model whose real name ends in `-1m` is not
   modified without explicit variant configuration.
@@ -344,7 +344,7 @@ router_hosted_tool_fallback_total{source_model,target_model}
 3. Deploy with no configured variants and verify exact catalog parity.
 4. Add one OpenAI canary variant, `gpt-5.6-sol-872k`.
 5. Exercise it with a fresh Codex task and inspect upstream routing.
-6. Add only provider-verified Voke variants.
+6. Add only provider-verified managed-provider variants.
 7. Document the entries and remove the canary designation after operational
    validation.
 
@@ -362,7 +362,7 @@ base model unchanged.
    the base value when omitted?
 4. Do we want variants grouped immediately after their base entry, even when
    upstream priorities would otherwise sort them differently?
-5. Which Voke context ceilings have been verified strongly enough to expose in
+5. Which managed-provider context ceilings have been verified strongly enough to expose in
    the initial rollout?
 
 ## Recommendation

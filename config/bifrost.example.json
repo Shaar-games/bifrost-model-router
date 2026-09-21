@@ -10,10 +10,10 @@
   },
   "providers": {
     "openai": { "keys": [] },
-    "cerebras": {
+    "managed": {
       "keys": [{
-        "name": "cerebras",
-        "value": "env.CEREBRAS_API_KEY",
+        "name": "managed",
+        "value": "env.MANAGED_PROVIDER_API_KEY",
         "models": ["*"],
         "weight": 1
       }]
@@ -28,13 +28,13 @@
       "instructions_template": "You are a coding agent.",
       "hosted_tool_fallback_model": "openai/gpt-5.6-luna",
       "providers": {
-        "openai": { "credential_mode": "request_passthrough", "responses_mode": "native" },
-        "cerebras": { "credential_mode": "bifrost", "responses_mode": "chat_polyfill", "adapter": "single-system-message" }
+        "openai": { "credential_mode": "request_passthrough", "responses_mode": "native", "discover_models": true },
+        "managed": { "credential_mode": "bifrost", "responses_mode": "chat_polyfill", "adapter": "single-system-message", "discover_models": true, "codex_defaults": { "context_window": 131072, "input_modalities": ["text"] } }
       },
       "models": {
         "openai/gpt-example": { "aliases": ["gpt-example"], "codex": { "context_window": 128000 } },
         "openai/gpt-5.6-luna": { "aliases": ["gpt-5.6-luna"], "codex": { "context_window": 272000 } },
-        "cerebras/example-model": { "aliases": ["example-model"], "codex": { "context_window": 131072 } }
+        "managed/example-model": { "aliases": ["example-model"], "codex": { "context_window": 131072 } }
       }
     }
   }]

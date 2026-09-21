@@ -13,12 +13,12 @@ func fallbackTestConfig(t *testing.T) config.Config {
 		Version:                 1,
 		HostedToolFallbackModel: "luna",
 		Providers: map[string]config.ProviderProfile{
-			"openai": {CredentialMode: config.CredentialRequestPassthrough, ResponsesMode: config.ResponsesNative},
-			"voke":   {CredentialMode: config.CredentialBifrost, ResponsesMode: config.ResponsesChatPolyfill},
+			"openai":  {CredentialMode: config.CredentialRequestPassthrough, ResponsesMode: config.ResponsesNative},
+			"managed": {CredentialMode: config.CredentialBifrost, ResponsesMode: config.ResponsesChatPolyfill},
 		},
 		Models: map[string]config.ModelProfile{
-			"openai/luna": {Aliases: []string{"luna"}, Codex: config.CodexProfile{}},
-			"voke/flash":  {Codex: config.CodexProfile{}},
+			"openai/luna":        {Aliases: []string{"luna"}, Codex: config.CodexProfile{}},
+			"managed/text-model": {Codex: config.CodexProfile{}},
 		},
 	}
 	if err := cfg.ApplyDefaultsAndValidate(); err != nil {
@@ -28,12 +28,12 @@ func fallbackTestConfig(t *testing.T) config.Config {
 }
 
 func TestApplyHostedToolFallbackRewritesWholeRequest(t *testing.T) {
-	body := []byte(`{"model":"voke/flash","input":"hello","tools":[{"type":"namespace","name":"functions","tools":[{"type":"function","name":"shell"}]},{"type":"web_search"}]}`)
+	body := []byte(`{"model":"managed/text-model","input":"hello","tools":[{"type":"namespace","name":"functions","tools":[{"type":"function","name":"shell"}]},{"type":"web_search"}]}`)
 	routed, decision, err := ApplyHostedToolFallback(body, fallbackTestConfig(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decision == nil || decision.OriginalModel != "voke/flash" || decision.FallbackModel != "openai/luna" {
+	if decision == nil || decision.OriginalModel != "managed/text-model" || decision.FallbackModel != "openai/luna" {
 		t.Fatalf("decision = %#v", decision)
 	}
 	if len(decision.ToolTypes) != 1 || decision.ToolTypes[0] != "web_search" {
@@ -53,7 +53,7 @@ func TestApplyHostedToolFallbackRewritesWholeRequest(t *testing.T) {
 }
 
 func TestApplyHostedToolFallbackLeavesNamespaceForCore(t *testing.T) {
-	body := []byte(`{"model":"voke/flash","tools":[{"type":"namespace","name":"codex","tools":[{"type":"function","name":"shell"}]}]}`)
+	body := []byte(`{"model":"managed/text-model","tools":[{"type":"namespace","name":"codex","tools":[{"type":"function","name":"shell"}]}]}`)
 	routed, decision, err := ApplyHostedToolFallback(body, fallbackTestConfig(t))
 	if err != nil {
 		t.Fatal(err)
@@ -64,7 +64,7 @@ func TestApplyHostedToolFallbackLeavesNamespaceForCore(t *testing.T) {
 }
 
 func TestApplyHostedToolFallbackFindsNestedHostedTool(t *testing.T) {
-	body := []byte(`{"model":"voke/flash","tools":[{"type":"namespace","name":"mixed","tools":[{"type":"file_search"}]}]}`)
+	body := []byte(`{"model":"managed/text-model","tools":[{"type":"namespace","name":"mixed","tools":[{"type":"file_search"}]}]}`)
 	_, decision, err := ApplyHostedToolFallback(body, fallbackTestConfig(t))
 	if err != nil {
 		t.Fatal(err)

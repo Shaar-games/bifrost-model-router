@@ -18,7 +18,10 @@ type ResolvedModel struct {
 func (c Config) ResolveModel(name string) (ResolvedModel, bool) {
 	if c.resolutionIndex != nil {
 		resolved, ok := c.resolutionIndex[name]
-		return resolved, ok
+		if ok {
+			return resolved, true
+		}
+		return c.resolveDiscoveredModel(name)
 	}
 	// Config values assembled directly by callers are supported for backwards
 	// compatibility, although Decode and ApplyDefaultsAndValidate always build
@@ -26,7 +29,64 @@ func (c Config) ResolveModel(name string) (ResolvedModel, bool) {
 	copy := c
 	copy.buildResolutionIndex()
 	resolved, ok := copy.resolutionIndex[name]
-	return resolved, ok
+	if ok {
+		return resolved, true
+	}
+	return copy.resolveDiscoveredModel(name)
+}
+
+func (c Config) resolveDiscoveredModel(name string) (ResolvedModel, bool) {
+	if c.looksLikeUnknownVariant(name) {
+		return ResolvedModel{}, false
+	}
+	providerName, upstreamModel := "", ""
+	if slash := strings.IndexByte(name, '/'); slash > 0 && slash < len(name)-1 {
+		providerName, upstreamModel = name[:slash], name[slash+1:]
+	} else if provider, ok := c.Providers["openai"]; ok && provider.DiscoverModels {
+		providerName, upstreamModel = "openai", name
+	}
+	provider, ok := c.Providers[providerName]
+	if !ok || !provider.DiscoverModels || strings.TrimSpace(upstreamModel) == "" {
+		return ResolvedModel{}, false
+	}
+	slug := providerName + "/" + upstreamModel
+	model := ModelProfile{
+		Provider:      providerName,
+		UpstreamModel: upstreamModel,
+		ResponsesMode: provider.ResponsesMode,
+		Adapter:       provider.Adapter,
+		Codex:         provider.CodexDefaults,
+	}
+	applyCodexDefaults(slug, &model.Codex)
+	return ResolvedModel{Slug: slug, BaseSlug: slug, UpstreamModel: upstreamModel, Provider: provider, Model: model}, true
+}
+
+func (c Config) looksLikeUnknownVariant(name string) bool {
+	for configuredName, resolved := range c.resolutionIndex {
+		if resolved.Variant != nil || !strings.HasPrefix(name, configuredName+"-") {
+			continue
+		}
+		suffix := strings.TrimPrefix(name, configuredName+"-")
+		if len(suffix) < 2 {
+			continue
+		}
+		unit := suffix[len(suffix)-1]
+		if unit != 'k' && unit != 'm' {
+			continue
+		}
+		digits := suffix[:len(suffix)-1]
+		allDigits := true
+		for _, r := range digits {
+			if r < '0' || r > '9' {
+				allDigits = false
+				break
+			}
+		}
+		if allDigits {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Config) buildResolutionIndex() {

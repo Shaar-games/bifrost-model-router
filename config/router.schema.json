@@ -21,7 +21,9 @@
       "properties": {
         "credential_mode": { "enum": ["bifrost", "request_passthrough"] },
         "responses_mode": { "$ref": "#/$defs/responsesMode" },
-        "adapter": { "$ref": "#/$defs/adapter" }
+        "adapter": { "$ref": "#/$defs/adapter" },
+        "discover_models": { "type": "boolean" },
+        "codex_defaults": { "$ref": "#/$defs/codex" }
       }
     },
     "reasoningLevel": {

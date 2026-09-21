@@ -98,7 +98,7 @@ cat >"${app_dir}/config.json" <<JSON
           "chat_completion_stream": true,
           "responses": false,
           "responses_stream": false,
-          "list_models": false
+            "list_models": true
         },
         "request_path_overrides": {
           "chat_completion": "/v1/chat/completions",
@@ -121,7 +121,12 @@ cat >"${app_dir}/config.json" <<JSON
       "hosted_tool_fallback_model": "openai/native-model",
       "providers": {
         "openai": { "credential_mode": "request_passthrough", "responses_mode": "native" },
-        "mock-chat": { "credential_mode": "bifrost", "responses_mode": "chat_polyfill" }
+        "mock-chat": {
+          "credential_mode": "bifrost",
+          "responses_mode": "chat_polyfill",
+          "discover_models": true,
+          "codex_defaults": { "context_window": 64000, "input_modalities": ["text"] }
+        }
       },
       "models": {
         "openai/native-model": { "aliases": ["native-model"], "codex": { "context_window": 128000 } },
@@ -157,6 +162,7 @@ catalog_json="$(curl --fail-with-body --silent 'http://127.0.0.1:18080/v1/models
 jq -e '
   ([.models[] | select(.slug == "openai/native-model" and .responses_mode == "native")] | length == 1)
   and ([.models[] | select(.slug == "mock-chat/chat-model" and .responses_mode == "chat_polyfill")] | length == 1)
+  and ([.models[] | select(.slug == "mock-chat/chat-new-model" and .responses_mode == "chat_polyfill")] | length == 1)
 ' <<<"${catalog_json}" >/dev/null
 
 native_json="$(curl --fail-with-body --silent http://127.0.0.1:18080/v1/responses \
@@ -172,6 +178,12 @@ polyfill_json="$(curl --fail-with-body --silent http://127.0.0.1:18080/v1/respon
 	-H 'x-bf-vk: sk-bf-e2e' \
 	--data '{"model":"mock-chat/chat-model","input":"hello"}')"
 jq -e '.object == "response" and .output[0].content[0].text == "polyfill ok"' <<<"${polyfill_json}" >/dev/null
+
+discovered_polyfill_json="$(curl --fail-with-body --silent http://127.0.0.1:18080/v1/responses \
+	-H 'Content-Type: application/json' \
+	-H 'x-bf-vk: sk-bf-e2e' \
+	--data '{"model":"mock-chat/chat-new-model","input":"hello"}')"
+jq -e '.object == "response" and .model == "chat-new-model" and .output[0].content[0].text == "polyfill ok"' <<<"${discovered_polyfill_json}" >/dev/null
 
 hosted_fallback_json="$(curl --fail-with-body --silent http://127.0.0.1:18080/v1/responses \
 	-H 'Content-Type: application/json' \

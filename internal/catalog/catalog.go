@@ -48,6 +48,11 @@ func Hydrate(body []byte, cfg config.Config) ([]byte, error) {
 			continue
 		}
 		resolved, _ := cfg.ResolveModel(slug)
+		if resolved.Provider.DiscoverModels {
+			// With account-aware discovery enabled, an absent configured model is
+			// metadata-only and must not be advertised until the upstream lists it.
+			continue
+		}
 		base := HydrateModel(map[string]any{"id": slug}, resolved, cfg.Instructions)
 		out = append(out, base)
 		seen[slug] = true

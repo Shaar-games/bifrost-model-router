@@ -42,6 +42,8 @@ type ProviderProfile struct {
 	CredentialMode CredentialMode `json:"credential_mode" yaml:"credential_mode"`
 	ResponsesMode  ResponsesMode  `json:"responses_mode" yaml:"responses_mode"`
 	Adapter        string         `json:"adapter,omitempty" yaml:"adapter,omitempty"`
+	DiscoverModels bool           `json:"discover_models,omitempty" yaml:"discover_models,omitempty"`
+	CodexDefaults  CodexProfile   `json:"codex_defaults,omitempty" yaml:"codex_defaults,omitempty"`
 }
 
 type ReasoningLevel struct {
@@ -150,6 +152,13 @@ func (c *Config) ApplyDefaultsAndValidate() error {
 		}
 		if err := validateProvider(name, provider); err != nil {
 			return err
+		}
+		if provider.DiscoverModels {
+			defaults := ModelProfile{Provider: name, ResponsesMode: provider.ResponsesMode, Adapter: provider.Adapter, UpstreamModel: "discovered", Codex: provider.CodexDefaults}
+			applyCodexDefaults(name+"/discovered", &defaults.Codex)
+			if err := validateModel(name+"/discovered", defaults); err != nil {
+				return fmt.Errorf("provider %q codex_defaults: %w", name, err)
+			}
 		}
 		c.Providers[name] = provider
 	}

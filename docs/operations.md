@@ -18,7 +18,7 @@ Build `.#default` and configure the NixOS module:
 services.bifrost-model-router = {
   enable = true;
   configFile = ./bifrost.json;
-  credentials.CEREBRAS_API_KEY = "/run/secrets/cerebras-api-key";
+  credentials.MANAGED_PROVIDER_API_KEY = "/run/secrets/managed-provider-api-key";
 };
 ```
 
@@ -57,5 +57,6 @@ uninstall` or `router profile rollback BACKUP`.
 - `polyfill_*` error: the request uses a feature excluded by the model adapter.
 - Provider 401/403 on a non-OpenAI model: verify the Bifrost `env.NAME` reference
   and systemd credential mapping; do not add Codex auth as a workaround.
-- Catalog lacks a model: ensure it is declared in router config; configured
-  models are added even when upstream discovery is unavailable.
+- Catalog lacks a model: verify that account-aware discovery is enabled and the
+  authenticated upstream lists it. For providers without model discovery,
+  declare the model explicitly in router config.

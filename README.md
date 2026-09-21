@@ -16,9 +16,10 @@ For example:
 Codex reads [AGENTS.md](AGENTS.md) and gathers the requirements with you. It
 asks which provider plans or API accounts you want in Codex, researches their
 current endpoints and model availability, explains any compatibility limits,
-and configures only models available to those plans. You can name one or many
-providers, including OpenRouter, MiniMax, Z.AI, Voke, Fireworks, or another
-Bifrost-supported or OpenAI-compatible service.
+and uses authenticated model discovery where available. Newly published
+upstream models then appear in Codex automatically without configuration
+changes. You can name one or many
+providers supported by Bifrost or exposing an OpenAI-compatible service.
 
 OpenAI through the existing Codex login is always retained. Codex detects and
 merges an existing router setup automatically, and defaults new threads to

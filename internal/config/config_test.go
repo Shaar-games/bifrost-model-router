@@ -36,8 +36,8 @@ func TestContextVariantsResolveDeterministically(t *testing.T) {
 	cfg, err := Decode(strings.NewReader(`
 version: 1
 providers:
-  openai: {credential_mode: request_passthrough, responses_mode: native}
-  voke: {credential_mode: bifrost, responses_mode: chat_polyfill}
+  openai: {credential_mode: request_passthrough, responses_mode: native, discover_models: true}
+  managed: {credential_mode: bifrost, responses_mode: chat_polyfill}
 models:
   openai/sol:
     aliases: [sol]
@@ -45,8 +45,8 @@ models:
     codex: {context_window: 272000, max_context_window: 872000, effective_context_window_percent: 95}
     context_variants:
       - {context_window: 872000}
-  voke/deepseek:
-    aliases: [deepseek]
+  managed/text-model:
+    aliases: [text-model]
     codex: {context_window: 256000, max_context_window: 1000000, effective_context_window_percent: 90}
     context_variants:
       - {context_window: 256000}
@@ -61,8 +61,8 @@ models:
 	}{
 		{"sol-872k", "sol-872k", "openai/sol", "gpt-sol-upstream", 872000, 95},
 		{"openai/sol-872k", "sol-872k", "openai/sol", "gpt-sol-upstream", 872000, 95},
-		{"voke/deepseek-256k", "voke/deepseek-256k", "voke/deepseek", "deepseek", 256000, 90},
-		{"deepseek-1m", "voke/deepseek-1m", "voke/deepseek", "deepseek", 1000000, 95},
+		{"managed/text-model-256k", "managed/text-model-256k", "managed/text-model", "text-model", 256000, 90},
+		{"text-model-1m", "managed/text-model-1m", "managed/text-model", "text-model", 1000000, 95},
 	}
 	for _, test := range tests {
 		resolved, ok := cfg.ResolveModel(test.name)
@@ -72,6 +72,41 @@ models:
 	}
 	if _, ok := cfg.ResolveModel("sol-512k"); ok {
 		t.Fatal("unconfigured context suffix resolved")
+	}
+}
+
+func TestDiscoveredModelsResolveFromProviderDefaults(t *testing.T) {
+	cfg, err := Decode(strings.NewReader(`
+version: 1
+providers:
+  openai: {credential_mode: request_passthrough, responses_mode: native, discover_models: true}
+  managed:
+    credential_mode: bifrost
+    responses_mode: chat_polyfill
+    discover_models: true
+    codex_defaults: {context_window: 64000, input_modalities: [text]}
+models:
+  openai/sol: {aliases: [sol], codex: {context_window: 272000, max_context_window: 872000}, context_variants: [{context_window: 872000}]}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	managed, ok := cfg.ResolveModel("managed/new-model")
+	if !ok || managed.UpstreamModel != "new-model" || managed.Model.ResponsesMode != ResponsesChatPolyfill || managed.Model.Codex.ContextWindow != 64000 {
+		t.Fatalf("managed discovery = %#v, %v", managed, ok)
+	}
+	openAI, ok := cfg.ResolveModel("new-openai-model")
+	if !ok || openAI.Slug != "openai/new-openai-model" || openAI.Provider.CredentialMode != CredentialRequestPassthrough {
+		t.Fatalf("OpenAI discovery = %#v, %v", openAI, ok)
+	}
+	if _, ok := cfg.ResolveModel("unknown/model"); ok {
+		t.Fatal("unknown provider resolved dynamically")
+	}
+	if _, ok := cfg.ResolveModel("sol-512k"); ok {
+		t.Fatal("unknown configured context variant resolved dynamically")
+	}
+	if _, ok := cfg.ResolveModel("openai/sol-512k"); ok {
+		t.Fatal("unknown canonical context variant resolved dynamically")
 	}
 }
 
@@ -119,16 +154,16 @@ func TestRealModelNameEndingInContextLikeSuffixIsNotRewritten(t *testing.T) {
 	cfg, err := Decode(strings.NewReader(`
 version: 1
 providers:
-  voke: {credential_mode: bifrost, responses_mode: native}
+  managed: {credential_mode: bifrost, responses_mode: native}
 models:
-  voke/native-1m:
+  managed/native-1m:
     upstream_model: actual-native-1m
     codex: {context_window: 128000}
 `))
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolved, ok := cfg.ResolveModel("voke/native-1m")
+	resolved, ok := cfg.ResolveModel("managed/native-1m")
 	if !ok || resolved.Variant != nil || resolved.UpstreamModel != "actual-native-1m" {
 		t.Fatalf("resolution = %#v, %v", resolved, ok)
 	}

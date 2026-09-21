@@ -10,8 +10,9 @@ Go plugin supplies three policies from one immutable, validated configuration:
    model capability. Polyfill mode asks Bifrost core to translate Responses to
    Chat Completions and translate the result or SSE stream back.
 3. The post-transport hook hydrates successful Codex model-list requests while
-   preserving unknown upstream fields and adding configured undiscoverable
-   models, including OpenAI models for which Bifrost stores no key.
+   preserving unknown upstream fields. Account-aware provider catalogs flow
+   through automatically; explicit entries supply overrides and provide a
+   fallback for providers without discovery.
 
 The native plugin and host are built with Go 1.27 against Bifrost core v1.9.0.
 The Bifrost transport source is pinned in `flake.lock`; the plugin-load check

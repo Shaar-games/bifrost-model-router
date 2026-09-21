@@ -86,6 +86,39 @@ func TestHydrateIsDeterministic(t *testing.T) {
 	}
 }
 
+func TestHydrateFlowsThroughDiscoveredModelsAndHidesAbsentOverrides(t *testing.T) {
+	cfg := testConfig(t)
+	provider := cfg.Providers["other"]
+	provider.DiscoverModels = true
+	provider.CodexDefaults = config.CodexProfile{ContextWindow: 64000, InputModalities: []string{"text"}}
+	cfg.Providers["other"] = provider
+	if err := cfg.ApplyDefaultsAndValidate(); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Hydrate([]byte(`{"models":[{"slug":"other/new-model","display_name":"New Model","future":{"keep":true}}]}`), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Models []map[string]any `json:"models"`
+	}
+	if err := json.Unmarshal(out, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	foundNew, foundAbsentOverride := false, false
+	for _, model := range decoded.Models {
+		switch model["slug"] {
+		case "other/new-model":
+			foundNew = model["display_name"] == "New Model" && model["context_window"] == float64(64000) && model["future"] != nil
+		case "other/b":
+			foundAbsentOverride = true
+		}
+	}
+	if !foundNew || foundAbsentOverride {
+		t.Fatalf("discovered catalog = %s", out)
+	}
+}
+
 func TestHydratePreservesUpstreamContextAndGeneratesAdjacentVariant(t *testing.T) {
 	cfg := testConfig(t)
 	model := cfg.Models["openai/a"]

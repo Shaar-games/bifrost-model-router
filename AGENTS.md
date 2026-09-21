@@ -12,8 +12,9 @@ catalogs, or Codex provider configuration.
 - Ask focused questions until the provider and plan scope is clear. Prefer one
   consolidated question at a time over a long questionnaire.
 - First establish which provider plans or API accounts the user wants available
-  in Codex. Examples include OpenRouter, MiniMax, Z.AI, Voke, Fireworks, and any
-  other Bifrost-supported or OpenAI-compatible provider.
+  in Codex. Support any Bifrost-native or OpenAI-compatible provider without
+  advertising, recommending, or implying affiliation with specific downstream
+  companies.
 - Always retain OpenAI through the user's Codex login. This is an invariant,
   not a requirements question.
 - Inspect `~/.config/bifrost-model-router`, the managed Codex block, and the
@@ -76,8 +77,7 @@ Create `providers.env` with mode `0600` and one empty assignment for each
 required credential, for example:
 
 ```dotenv
-ZAI_API_KEY=
-OPENROUTER_API_KEY=
+MANAGED_PROVIDER_API_KEY=
 ```
 
 Tell the user exactly which file to open, ask them to fill the values locally,
@@ -96,17 +96,27 @@ Generate one complete Bifrost JSON configuration. Use
 `config/quickstart.json`, `config/bifrost.example.json`, and
 `docs/configuration.md` as structural references.
 
-For every managed provider, keep the same exact model allowlist in:
+Prefer authenticated, account-aware model discovery. When the provider's model
+endpoint reflects the models available to the supplied credential:
 
-1. `providers.<provider>.keys[].models`;
-2. `governance.virtual_keys[].provider_configs[].allowed_models`;
-3. `plugins[name=codex-model-router].config.models`.
+1. set the router provider's `discover_models` to `true`;
+2. allow the provider credential and local virtual key to use discovered model
+   IDs rather than maintaining a static per-model list;
+3. use explicit router model entries only for aliases, context variants, or
+   capability overrides.
 
-This exact allowlist is what prevents Codex from showing or routing models that
-the user's account cannot use. Do not publish every known model for a provider.
+The router then passes newly discovered upstream models into Codex immediately;
+users do not need to regenerate configuration when their provider adds a model.
+Provider-level `codex_defaults` supply conservative metadata for new models,
+while fields returned by the upstream catalog take precedence.
 
-Use canonical router slugs in the form `provider/model`. Set `upstream_model`
-to the provider's exact model ID. Keep aliases unambiguous. For custom
+If the provider has no model endpoint, or its endpoint is a global catalog that
+does not reflect account/plan availability, disable `discover_models` and use
+an explicit verified model list. This is the fallback, not the preferred path.
+
+Use canonical router slugs in the form `provider/model`. For explicit
+overrides, set `upstream_model` to the provider's exact model ID and keep
+aliases unambiguous. For custom
 OpenAI-compatible Chat providers, configure Bifrost with
 `base_provider_type: openai`, allow Chat Completions and streaming, disable
 native Responses and model listing when unsupported, and select a router
