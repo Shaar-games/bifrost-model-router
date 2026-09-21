@@ -1,0 +1,16 @@
+Bifrost Model Router
+Copyright 2026 Apply Innovations
+
+This product includes and is built upon Bifrost, an open-source AI gateway:
+
+  Bifrost
+  Copyright 2025 H3 Labs Inc.
+  https://github.com/maximhq/bifrost
+
+Bifrost is licensed under the Apache License, Version 2.0. The exact upstream
+revision used by this project is pinned in flake.lock. Bifrost's HTTP host,
+console, core schemas, and Responses compatibility implementation are
+substantial foundations of this project.
+
+This attribution is informational and does not imply endorsement by H3 Labs
+Inc., Maxim, or the Bifrost contributors.

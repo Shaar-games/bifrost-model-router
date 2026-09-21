@@ -1,67 +1,57 @@
 # Bifrost Model Router
 
-A provider-agnostic Bifrost plugin that presents a Codex-compatible model
-catalog, selects native or polyfilled Responses behavior per model, passes
-Codex's OpenAI credential through only for OpenAI models, and uses
-Bifrost-managed credentials everywhere else.
+Use OpenAI and Bifrost-managed models from one Codex model provider. Native
+Responses models pass through unchanged; Chat Completions-only models are
+polyfilled by Bifrost. Codex's OpenAI credential is forwarded only to declared
+OpenAI models and is stripped from every other provider route.
 
-The router uses a capability-driven plugin: native Responses requests pass
-through, while declared Chat-only providers are polyfilled by Bifrost. Codex's
-OpenAI bearer is allowed only for configured `openai/*` models; it is stripped
-before every Bifrost-credential route.
+## Quick start
+
+With Docker and the Codex CLI installed, run:
+
+```sh
+./scripts/setup-local.sh
+```
+
+The script pulls the published GHCR image, starts it on `http://127.0.0.1`, backs up
+`~/.codex/config.toml`, and makes `gpt-5.6-sol` the default for new Codex
+threads. It requires you to acknowledge that the local virtual key is stored
+in plaintext and that existing threads keep their current provider and model.
+
+See the **[Codex setup guide](docs/codex-setup.md)** for prerequisites,
+the installed configuration, verification, troubleshooting, and cleanup.
+
+## How it works
+
+- `native` models use their provider's Responses API.
+- `chat_polyfill` models use Bifrost's Responses-to-Chat translation.
+- OpenAI requests use the caller's Codex authentication; other providers use
+  credentials managed by Bifrost.
+- Unknown models and unsupported features fail closed.
+
+See [architecture](docs/architecture.md),
+[configuration](docs/configuration.md),
+[compatibility](docs/compatibility.md),
+[security](docs/security.md), and [operations](docs/operations.md).
 
 ## Development
+
+The host and plugin are built together with Go 1.27 and Bifrost core v1.9.0 to
+preserve Go plugin ABI compatibility.
 
 ```sh
 nix develop
 just test
 just check-config
-```
-
-Build the plugin and configuration checker with:
-
-```sh
 nix build .#default
 ```
 
-The default package also contains the pinned Bifrost HTTP host. The host and
-plugin use Go 1.27, Bifrost core v1.9.0, and the same Nix toolchain. CI starts
-the packaged host with the packaged plugin to catch Go plugin ABI drift.
+Run `nix flake check -L` for the complete validation suite. Provider secrets
+are runtime inputs; never add them to Nix expressions, tracked configuration,
+or the Codex provider profile.
 
-Individual outputs are available as `.#bifrost`, `.#plugin`, `.#router`, and
-`.#config-check`. The deployable OCI stream is available as
-`.#bifrost-model-router-image`; it embeds the upstream Bifrost console built
-from the same pinned source revision as the HTTP host.
+## License and attribution
 
-## Configure Codex
-
-The installer adds only a marked provider block to the user-level Codex
-configuration, preserves all other text and comments, and writes a timestamped
-backup before changes:
-
-```sh
-nix run .#router -- profile install --base-url https://model-router.xlab.now/v1
-```
-
-It deliberately sets `requires_openai_auth = true`, maps `x-bf-vk` from the
-`BIFROST_API_KEY` environment variable, and does not store either credential.
-Use `profile uninstall` to remove the managed block or `profile rollback
-BACKUP` to restore an exact backup. Run `profile render` to inspect the TOML
-without changing anything.
-
-## Run locally
-
-Copy and edit `config/bifrost.example.json`, replacing its plugin path with the
-path printed by `nix build .#plugin --print-out-paths`. Then run:
-
-```sh
-CEREBRAS_API_KEY=... nix run .#bifrost -- -app-dir /path/to/app-dir -host 127.0.0.1 -port 8080
-```
-
-The app directory must contain `config.json`; provider keys stay in runtime
-environment variables or systemd credentials. See the
-[configuration](docs/configuration.md), [compatibility](docs/compatibility.md),
-[security](docs/security.md), and [operations](docs/operations.md) guides.
-
-Provider secrets are runtime inputs. Do not add them to Nix expressions,
-tracked configuration, or the Codex provider profile.
+Licensed under the [Apache License 2.0](LICENSE). This project is built heavily
+on [Bifrost](https://github.com/maximhq/bifrost), copyright H3 Labs Inc. and
+licensed under Apache 2.0. See [NOTICE](NOTICE) for attribution details.

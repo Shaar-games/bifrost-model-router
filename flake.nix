@@ -132,6 +132,10 @@
                 -port "''${BIFROST_PORT:-8080}"
             '';
           };
+          licenseBundle = pkgs.runCommand "bifrost-model-router-licenses" { } ''
+            install -Dm644 ${./LICENSE} $out/share/licenses/bifrost-model-router/LICENSE
+            install -Dm644 ${./NOTICE} $out/share/licenses/bifrost-model-router/NOTICE
+          '';
           imageRoot = pkgs.buildEnv {
             name = "bifrost-model-router-image-root";
             paths = [
@@ -139,7 +143,9 @@
               plugin
               gateway
               launcher
+              licenseBundle
               pkgs.cacert
+              pkgs.coreutils
               pkgs.curl
               pkgs.tzdata
             ];
@@ -173,8 +179,50 @@
                 "org.opencontainers.image.source" = "https://github.com/applyinnovations/bifrost-model-router";
                 "org.opencontainers.image.version" = version;
                 "org.opencontainers.image.title" = "Bifrost Model Router";
+                "org.opencontainers.image.licenses" = "Apache-2.0";
               };
             };
+          };
+          publishContainer = pkgs.writeShellApplication {
+            name = "publish-container";
+            runtimeInputs = [
+              pkgs.coreutils
+              pkgs.skopeo
+            ];
+            text = ''
+              if (( $# < 1 )); then
+                echo "usage: publish-container ghcr.io/applyinnovations/bifrost-model-router:TAG [...]" >&2
+                exit 2
+              fi
+              if [[ -z "''${GHCR_USER:-}" || -z "''${GHCR_TOKEN:-}" ]]; then
+                echo "GHCR_USER and GHCR_TOKEN are required" >&2
+                exit 1
+              fi
+
+              work_dir="$(mktemp -d)"
+              trap 'rm -rf -- "$work_dir"' EXIT
+              export REGISTRY_AUTH_FILE="$work_dir/auth.json"
+              policy_file="$work_dir/policy.json"
+              image_tar="$work_dir/image.tar"
+              printf '%s\n' '{"default":[{"type":"insecureAcceptAnything"}]}' > "$policy_file"
+
+              printf '%s' "$GHCR_TOKEN" | \
+                skopeo login --authfile "$REGISTRY_AUTH_FILE" \
+                  --username "$GHCR_USER" --password-stdin ghcr.io >/dev/null
+              ${image} > "$image_tar"
+
+              for destination in "$@"; do
+                case "$destination" in
+                  ghcr.io/applyinnovations/bifrost-model-router:*) ;;
+                  *)
+                    echo "refusing unexpected destination: $destination" >&2
+                    exit 2
+                    ;;
+                esac
+                skopeo --policy "$policy_file" copy --all \
+                  "docker-archive:$image_tar" "docker://$destination"
+              done
+            '';
           };
         in
         {
@@ -184,6 +232,7 @@
           bifrost-model-router-image = image;
           config-check = configCheck;
           inherit router;
+          publish-container = publishContainer;
           mock-provider = mockProvider;
           default = pkgs.symlinkJoin {
             name = "bifrost-model-router-${version}";
@@ -193,6 +242,7 @@
               configCheck
               router
               gateway
+              licenseBundle
             ];
           };
         }
@@ -226,6 +276,7 @@
                 jq -e '.config.User == "65532:65532"' "$work/$config_name" >/dev/null
                 jq -e '.config.Entrypoint == ["/bin/bifrost-model-router-server"]' "$work/$config_name" >/dev/null
                 jq -e '.config.WorkingDir == "/var/lib/bifrost"' "$work/$config_name" >/dev/null
+                jq -e '.config.Labels."org.opencontainers.image.licenses" == "Apache-2.0"' "$work/$config_name" >/dev/null
                 touch $out
               '';
           ui-content =
@@ -237,6 +288,17 @@
                 test -s ${self.packages.${system}.bifrost-ui}/index.html
                 test -d ${self.packages.${system}.bifrost-ui}/assets
                 ! rg -q "API-only build" ${self.packages.${system}.bifrost-ui}/index.html
+                touch $out
+              '';
+          licenses =
+            pkgs.runCommand "bifrost-router-licenses"
+              {
+                nativeBuildInputs = [ pkgs.diffutils ];
+              }
+              ''
+                packaged=${self.packages.${system}.default}/share/licenses/bifrost-model-router
+                diff -u ${./LICENSE} "$packaged/LICENSE"
+                diff -u ${./NOTICE} "$packaged/NOTICE"
                 touch $out
               '';
           format =
@@ -292,6 +354,27 @@
               ''
                 check-jsonschema --schemafile ${./config/router.schema.json} ${./config/router.example.yaml}
                 config-check ${./config/router.example.yaml} >/dev/null
+                touch $out
+              '';
+          tekton =
+            pkgs.runCommand "bifrost-router-tekton"
+              {
+                nativeBuildInputs = [
+                  pkgs.ripgrep
+                  pkgs.yq-go
+                ];
+              }
+              ''
+                pipeline=${./.tekton/bifrost-model-router-images.yaml}
+                yq -e '.metadata.annotations."pipelinesascode.tekton.dev/target-namespace" == "tekton-buildkit"' "$pipeline" >/dev/null
+                yq -e '.spec.taskRunSpecs[] | select(.pipelineTaskName == "publish-ghcr") | .podTemplate.hostUsers == false' "$pipeline" >/dev/null
+                yq -e '.spec.pipelineSpec.tasks[] | select(.name == "publish-ghcr") | .runAfter | select(length == 1) | .[0] == "build-and-push-image"' "$pipeline" >/dev/null
+                yq -e '.spec.pipelineSpec.tasks[] | select(.name == "publish-ghcr") | .taskRef.params[] | select(.name == "name" and .value == "nix-run-github-v2")' "$pipeline" >/dev/null
+                yq -e '.spec.pipelineSpec.tasks[] | select(.name == "publish-ghcr") | .workspaces[] | select(.name == "github-packages-auth" and .workspace == "github-packages-auth")' "$pipeline" >/dev/null
+                yq -e '.spec.workspaces[] | select(.name == "github-packages-auth") | .secret.secretName == "github-packages-credentials"' "$pipeline" >/dev/null
+                publish_script="$(yq -r '.spec.pipelineSpec.tasks[] | select(.name == "publish-ghcr") | .params[] | select(.name == "SCRIPT") | .value' "$pipeline")"
+                printf '%s\n' "$publish_script" | rg -F 'ghcr.io/applyinnovations/bifrost-model-router:sha-$(tasks.clone.results.COMMIT_SHA)' >/dev/null
+                printf '%s\n' "$publish_script" | rg -F 'ghcr.io/applyinnovations/bifrost-model-router:main' >/dev/null
                 touch $out
               '';
           race =
@@ -457,6 +540,10 @@
         bifrost = {
           type = "app";
           program = "${self.packages.${system}.bifrost}/bin/bifrost-http";
+        };
+        publish-container = {
+          type = "app";
+          program = "${self.packages.${system}.publish-container}/bin/publish-container";
         };
       });
 
