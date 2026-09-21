@@ -3,17 +3,17 @@
     "bifrost": {
       "flake": false,
       "locked": {
-        "lastModified": 1789497065,
-        "narHash": "sha256-wS8cIeCAyPRaDBnaZpU77wBmOHLxCtCk1mg9LXSCcIk=",
-        "owner": "maximhq",
+        "lastModified": 1789994472,
+        "narHash": "sha256-ol1gyMsEAcnIV4FIm19xxzXa2/7YQLTuTTNaiQww5ts=",
+        "owner": "applyinnovations",
         "repo": "bifrost",
-        "rev": "ed79592fc4771f12f2717dd7c9ab668e663a08f3",
+        "rev": "bc0ff9e2bc56381c668301d35fa0cc378edff4d3",
         "type": "github"
       },
       "original": {
-        "owner": "maximhq",
+        "owner": "applyinnovations",
         "repo": "bifrost",
-        "rev": "ed79592fc4771f12f2717dd7c9ab668e663a08f3",
+        "rev": "bc0ff9e2bc56381c668301d35fa0cc378edff4d3",
         "type": "github"
       }
     },

@@ -119,6 +119,30 @@ func TestHydrateFlowsThroughDiscoveredModelsAndHidesAbsentOverrides(t *testing.T
 	}
 }
 
+func TestHydrateCanonicalizesDiscoveredIDAndAppliesNameOverride(t *testing.T) {
+	cfg := testConfig(t)
+	provider := cfg.Providers["other"]
+	provider.DiscoverModels = true
+	provider.ModelNameOverrides = map[string]string{"vendor/reasoner": "Reasoner Pro"}
+	cfg.Providers["other"] = provider
+	if err := cfg.ApplyDefaultsAndValidate(); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Hydrate([]byte(`{"models":[{"id":"other/vendor/reasoner","slug":"other/vendor/reasoner","display_name":"vendor/reasoner"}]}`), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Models []map[string]any `json:"models"`
+	}
+	if err := json.Unmarshal(out, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded.Models) < 1 || decoded.Models[0]["id"] != "other/vendor/reasoner" || decoded.Models[0]["slug"] != "other/vendor/reasoner" || decoded.Models[0]["display_name"] != "Reasoner Pro" {
+		t.Fatalf("hydrated model = %s", out)
+	}
+}
+
 func TestHydratePreservesUpstreamContextAndGeneratesAdjacentVariant(t *testing.T) {
 	cfg := testConfig(t)
 	model := cfg.Models["openai/a"]

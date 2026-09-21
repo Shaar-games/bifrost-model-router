@@ -46,6 +46,24 @@ func (c Config) resolveDiscoveredModel(name string) (ResolvedModel, bool) {
 		providerName, upstreamModel = "openai", name
 	}
 	provider, ok := c.Providers[providerName]
+	if !ok {
+		// Some OpenAI-compatible model IDs contain a slash of their own. Older
+		// Codex catalogs may have cached that bare upstream ID instead of the
+		// router's provider-prefixed ID. A configured name override is also an
+		// unambiguous declaration of which discovered provider owns that ID.
+		for candidateName, candidate := range c.Providers {
+			if !candidate.DiscoverModels {
+				continue
+			}
+			if _, known := candidate.ModelNameOverrides[name]; !known {
+				continue
+			}
+			if ok {
+				return ResolvedModel{}, false
+			}
+			providerName, upstreamModel, provider, ok = candidateName, name, candidate, true
+		}
+	}
 	if !ok || !provider.DiscoverModels || strings.TrimSpace(upstreamModel) == "" {
 		return ResolvedModel{}, false
 	}

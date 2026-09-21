@@ -15,6 +15,9 @@ Provider fields:
   `strict-text-only`.
 - `discover_models`: accept and publish models returned by that provider's
   authenticated model catalog without requiring per-model configuration.
+- `model_name_overrides`: optional exact upstream-model-ID to display-name
+  mappings. Use this only when discovery omits a readable `display_name`;
+  upstream names otherwise flow through unchanged.
 - `codex_defaults`: conservative Codex metadata applied to newly discovered
   models when the upstream catalog omits those fields.
 
@@ -29,6 +32,13 @@ variant overrides; configured overrides absent from the authenticated upstream
 catalog are not advertised. Enable discovery only when the provider's model
 endpoint is account-aware. For providers without such an endpoint, leave it
 disabled and configure a verified static model list.
+
+Discovered catalog IDs are normalized to canonical `provider/model` IDs before
+Codex sees them. This is required when the upstream model ID itself contains a
+slash: Codex must send the configured Bifrost provider, not interpret the
+upstream vendor prefix as a provider. Display names, descriptions, default
+reasoning levels, and supported reasoning levels returned by compatible
+upstreams are preserved; configured overrides take precedence only for names.
 
 `upstream_model` controls the provider model sent after resolution and defaults
 to the portion of the canonical slug after `provider/`. Optional
