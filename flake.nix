@@ -377,6 +377,24 @@
                 printf '%s\n' "$publish_script" | rg -F 'ghcr.io/applyinnovations/bifrost-model-router:main' >/dev/null
                 touch $out
               '';
+          setup-executor =
+            pkgs.runCommand "bifrost-router-setup-executor"
+              {
+                nativeBuildInputs = [
+                  pkgs.bash
+                  pkgs.coreutils
+                  pkgs.gawk
+                  pkgs.gnugrep
+                  pkgs.gnused
+                  pkgs.jq
+                ];
+              }
+              ''
+                cp -R ${self} source
+                chmod -R u+w source
+                ${pkgs.bash}/bin/bash source/scripts/setup-local-test.sh
+                touch $out
+              '';
           race =
             pkgs.runCommand "bifrost-router-race"
               {

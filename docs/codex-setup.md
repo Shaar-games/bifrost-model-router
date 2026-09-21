@@ -1,7 +1,9 @@
-# Set up Codex locally
+# Agent-managed Codex setup
 
-This quickstart pulls the published OCI image, starts the router with Docker, and makes
-it the default model provider for new Codex threads.
+The recommended setup interface is a Codex agent. The agent gathers provider
+and plan requirements, generates an exact model allowlist, obtains credentials
+through a local env file, pulls the published image, and configures new Codex
+threads.
 
 ## Quick start
 
@@ -12,11 +14,56 @@ required. Sign in to Codex first:
 codex login status || codex login
 ```
 
-From the repository root, run:
+Open this repository in Codex and describe the outcome at any level of detail:
+
+> Set this up for me.
+
+That starts requirements gathering. Codex should ask which provider plans or
+API accounts you want to add, whether to retain OpenAI through your Codex login,
+which provider should be the default, and any scope it cannot safely infer. It
+then researches current provider documentation and account-visible models
+rather than requiring you to supply Bifrost configuration.
+
+The agent follows [the repository onboarding instructions](../AGENTS.md).
+
+## Credential step
+
+After resolving the providers and required environment variable names, Codex
+creates:
+
+```text
+~/.config/bifrost-model-router/providers.env
+```
+
+with mode `0600` and empty placeholders such as:
+
+```dotenv
+ZAI_API_KEY=
+OPENROUTER_API_KEY=
+```
+
+Open that file locally, fill the values, save it, and tell Codex it is ready.
+Do not paste provider credentials into chat. Codex preserves existing entries
+when adding another provider and never copies their values into generated JSON
+or `~/.codex/config.toml`.
+
+## Low-level executor
+
+After requirements and credentials are complete, Codex invokes:
 
 ```sh
-./scripts/setup-local.sh
+./scripts/setup-local.sh \
+  --config ~/.config/bifrost-model-router/config.json \
+  --env-file ~/.config/bifrost-model-router/providers.env \
+  --model DEFAULT_MODEL \
+  --reasoning-effort medium \
+  --accept-plaintext-key \
+  --accept-new-threads-only \
+  --replace
 ```
+
+Humans normally do not need to construct this command. Running the script
+without agent flags remains supported and presents interactive notices.
 
 The default image is the public
 `ghcr.io/applyinnovations/bifrost-model-router:main`. To use another published
@@ -27,7 +74,7 @@ BIFROST_ROUTER_IMAGE=ghcr.io/applyinnovations/bifrost-model-router:TAG \
   ./scripts/setup-local.sh
 ```
 
-The script pauses for two explicit acknowledgements:
+Before invoking the executor, the agent explains two effects:
 
 1. The Bifrost virtual key will be written in plaintext to
    `~/.codex/config.toml`. This is convenient for a loopback-only development
@@ -36,7 +83,7 @@ The script pauses for two explicit acknowledgements:
    Existing and currently running threads keep the provider and model with
    which they were created.
 
-The script makes a timestamped backup before changing an existing
+The executor makes a timestamped backup before changing an existing
 `~/.codex/config.toml`. It prints the exact backup path when it finishes.
 
 ## What the script starts
@@ -53,10 +100,11 @@ loopback and should not be exposed directly to another machine.
 
 ## Codex configuration
 
-The generated virtual key replaces `sk-bf-xxx` in the installed configuration:
+The selected model and generated virtual key replace the placeholders in the
+installed configuration:
 
 ```toml
-model = "gpt-5.6-sol"
+model = "DEFAULT_MODEL"
 model_provider = "bifrost-router"
 model_reasoning_effort = "medium"
 
@@ -84,9 +132,9 @@ docker ps --filter name=bifrost-model-router
 curl --fail http://127.0.0.1/health
 ```
 
-Then start a **new** Codex thread. It should use `gpt-5.6-sol` with medium
-reasoning effort. Threads that were open before setup are expected to remain on
-their previous provider and model.
+Then start a **new** Codex thread. It should use the default model and reasoning
+effort agreed during requirements gathering. Threads that were open before
+setup are expected to remain on their previous provider and model.
 
 ## Troubleshooting
 

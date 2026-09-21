@@ -8,9 +8,76 @@ state_volume="bifrost-model-router-data"
 image_name="${BIFROST_ROUTER_IMAGE:-ghcr.io/applyinnovations/bifrost-model-router:main}"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_dir="$(cd -- "${script_dir}/.." && pwd)"
-runtime_config="${repo_dir}/config/quickstart.json"
+config_source="${repo_dir}/config/quickstart.json"
+provider_env=""
+default_model="gpt-5.6-sol"
+reasoning_effort="medium"
+accept_plaintext_key=false
+accept_new_threads=false
+replace_existing=false
+state_dir="${XDG_STATE_HOME:-${HOME}/.local/state}/bifrost-model-router"
+runtime_config="${state_dir}/config.json"
 codex_dir="${CODEX_HOME:-${HOME}/.codex}"
 codex_config="${codex_dir}/config.toml"
+
+usage() {
+	cat <<'EOF'
+usage: setup-local.sh [options]
+
+Options:
+  --config PATH                  Bifrost config generated for the user's plans
+  --env-file PATH                Mode-0600 provider credential environment file
+  --model MODEL                  Default Codex model
+  --reasoning-effort EFFORT      minimal, low, medium, high, or xhigh
+  --image IMAGE                  OCI image override
+  --accept-plaintext-key         Accept the local virtual-key notice
+  --accept-new-threads-only      Accept that defaults affect new threads only
+  --replace                      Replace existing quickstart containers
+  -h, --help                     Show this help
+EOF
+}
+
+parse_args() {
+	while (($# > 0)); do
+		case "$1" in
+		--config | --env-file | --model | --reasoning-effort | --image)
+			if (($# < 2)); then
+				printf 'error: %s requires a value\n' "$1" >&2
+				exit 2
+			fi
+			case "$1" in
+			--config) config_source="$2" ;;
+			--env-file) provider_env="$2" ;;
+			--model) default_model="$2" ;;
+			--reasoning-effort) reasoning_effort="$2" ;;
+			--image) image_name="$2" ;;
+			esac
+			shift 2
+			;;
+		--accept-plaintext-key)
+			accept_plaintext_key=true
+			shift
+			;;
+		--accept-new-threads-only)
+			accept_new_threads=true
+			shift
+			;;
+		--replace)
+			replace_existing=true
+			shift
+			;;
+		-h | --help)
+			usage
+			exit 0
+			;;
+		*)
+			printf 'error: unknown option: %s\n' "$1" >&2
+			usage >&2
+			exit 2
+			;;
+		esac
+	done
+}
 
 require_command() {
 	if ! command -v "$1" >/dev/null 2>&1; then
@@ -35,6 +102,67 @@ acknowledge() {
 
 container_exists() {
 	docker container inspect "$1" >/dev/null 2>&1
+}
+
+prepare_inputs() {
+	local permissions required_name
+	local -a required_names
+
+	if [[ -L "$config_source" || ! -f "$config_source" ]]; then
+		printf 'error: router config must be a regular, non-symlink file: %s\n' "$config_source" >&2
+		exit 1
+	fi
+	jq empty "$config_source"
+	if ! jq -e '[.providers[]?.keys[]?.value | select(type == "string" and (startswith("env.") | not))] | length == 0' "$config_source" >/dev/null; then
+		printf 'error: provider credentials in the config must use env.NAME references\n' >&2
+		exit 1
+	fi
+	if [[ ! "$default_model" =~ ^[A-Za-z0-9._:/-]+$ ]]; then
+		printf 'error: unsafe default model name: %s\n' "$default_model" >&2
+		exit 1
+	fi
+	case "$reasoning_effort" in
+	minimal | low | medium | high | xhigh) ;;
+	*)
+		printf 'error: invalid reasoning effort: %s\n' "$reasoning_effort" >&2
+		exit 1
+		;;
+	esac
+
+	mapfile -t required_names < <(
+		jq -r '.. | strings | select(startswith("env.")) | ltrimstr("env.")' "$config_source" |
+			sort -u | grep -v '^BIFROST_QUICKSTART_VK$' || true
+	)
+	if [[ -n "$provider_env" ]]; then
+		if [[ -L "$provider_env" || ! -f "$provider_env" ]]; then
+			printf 'error: provider env file must be a regular, non-symlink file: %s\n' "$provider_env" >&2
+			exit 1
+		fi
+		permissions="$(stat -c '%a' "$provider_env")"
+		if (((8#$permissions & 077) != 0)); then
+			printf 'error: provider env file must not be accessible by group or others (mode is %s)\n' "$permissions" >&2
+			exit 1
+		fi
+	fi
+	if ((${#required_names[@]} > 0)); then
+		if [[ -z "$provider_env" ]]; then
+			printf 'error: --env-file is required for provider credentials: %s\n' "${required_names[*]}" >&2
+			exit 1
+		fi
+		for required_name in "${required_names[@]}"; do
+			if [[ ! "$required_name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || ! grep -Eq "^${required_name}=.+$" "$provider_env"; then
+				printf 'error: provider env file has no non-empty %s entry\n' "$required_name" >&2
+				exit 1
+			fi
+		done
+	fi
+}
+
+stage_runtime_config() {
+	mkdir -p "$state_dir"
+	chmod 0700 "$state_dir"
+	cp -- "$config_source" "$runtime_config"
+	chmod 0644 "$runtime_config"
 }
 
 wait_for_health() {
@@ -111,9 +239,9 @@ install_codex_config() {
 
 	{
 		printf '%s\n' '# BEGIN bifrost-model-router quickstart defaults (managed)'
-		printf '%s\n' 'model = "gpt-5.6-sol"'
+		printf 'model = "%s"\n' "$default_model"
 		printf '%s\n' 'model_provider = "bifrost-router"'
-		printf '%s\n' 'model_reasoning_effort = "medium"'
+		printf 'model_reasoning_effort = "%s"\n' "$reasoning_effort"
 		printf '%s\n\n' '# END bifrost-model-router quickstart defaults (managed)'
 		sed '/./,$!d' "$cleaned"
 		if [[ -s "$cleaned" ]]; then
@@ -144,15 +272,12 @@ install_codex_config() {
 
 main() {
 	local command virtual_key
+	local -a provider_env_args=()
 
-	for command in docker codex openssl curl awk sed grep; do
+	parse_args "$@"
+	for command in docker codex openssl curl awk sed grep jq stat cp sort; do
 		require_command "$command"
 	done
-
-	if [[ ! -t 0 ]]; then
-		printf 'error: setup requires an interactive terminal for acknowledgements\n' >&2
-		exit 1
-	fi
 
 	if ! docker info >/dev/null 2>&1; then
 		printf 'error: Docker is not available; start the daemon and check your access\n' >&2
@@ -162,19 +287,39 @@ main() {
 		printf 'error: Codex is not signed in; run codex login, then rerun setup\n' >&2
 		exit 1
 	fi
+	prepare_inputs
 
-	acknowledge \
-		'WARNING: this local-development setup stores the Bifrost virtual key as plaintext in ~/.codex/config.toml. Anyone who can read that file can use the key.' \
-		'I-ACCEPT-PLAINTEXT-KEY'
+	if [[ "$accept_plaintext_key" != true ]]; then
+		if [[ ! -t 0 ]]; then
+			printf 'error: non-interactive setup requires --accept-plaintext-key\n' >&2
+			exit 1
+		fi
+		acknowledge \
+			'WARNING: this local-development setup stores the Bifrost virtual key as plaintext in ~/.codex/config.toml. Anyone who can read that file can use the key.' \
+			'I-ACCEPT-PLAINTEXT-KEY'
+	fi
 
-	acknowledge \
-		'WARNING: the provider and model defaults apply only to new Codex threads. Existing, resumed, and currently running threads will not change and may reject router models as unsupported ChatGPT models.' \
-		'I-UNDERSTAND-NEW-THREADS-ONLY'
+	if [[ "$accept_new_threads" != true ]]; then
+		if [[ ! -t 0 ]]; then
+			printf 'error: non-interactive setup requires --accept-new-threads-only\n' >&2
+			exit 1
+		fi
+		acknowledge \
+			'WARNING: the provider and model defaults apply only to new Codex threads. Existing, resumed, and currently running threads will not change and may reject router models as unsupported ChatGPT models.' \
+			'I-UNDERSTAND-NEW-THREADS-ONLY'
+	fi
+	stage_runtime_config
 
 	if container_exists "$core_container" || container_exists "$gateway_container"; then
-		acknowledge \
-			'Existing Bifrost Model Router quickstart containers will be replaced. The persistent Docker volume will be retained.' \
-			'REPLACE-LOCAL-ROUTER'
+		if [[ "$replace_existing" != true ]]; then
+			if [[ ! -t 0 ]]; then
+				printf 'error: existing containers require --replace in non-interactive setup\n' >&2
+				exit 1
+			fi
+			acknowledge \
+				'Existing Bifrost Model Router quickstart containers will be replaced. The persistent Docker volume will be retained.' \
+				'REPLACE-LOCAL-ROUTER'
+		fi
 		docker rm -f "$gateway_container" "$core_container" >/dev/null 2>&1 || true
 	fi
 
@@ -196,6 +341,9 @@ main() {
 		"$image_name" 65532:65532 /var/lib/bifrost/data
 
 	virtual_key="sk-bf-$(openssl rand -hex 24)"
+	if [[ -n "$provider_env" ]]; then
+		provider_env_args=(--env-file "$provider_env")
+	fi
 
 	docker run --detach \
 		--name "$core_container" \
@@ -204,6 +352,7 @@ main() {
 		--env BIFROST_APP_DIR=/var/lib/bifrost/data \
 		--env BIFROST_HOST=0.0.0.0 \
 		--env BIFROST_QUICKSTART_VK="$virtual_key" \
+		"${provider_env_args[@]}" \
 		--volume "${state_volume}:/var/lib/bifrost" \
 		--volume "${runtime_config}:/etc/bifrost/config.json:ro" \
 		"$image_name" >/dev/null
@@ -222,7 +371,7 @@ main() {
 	wait_for_health
 	install_codex_config "$virtual_key"
 
-	printf '\nSetup complete. Start a new Codex thread to use gpt-5.6-sol.\n'
+	printf '\nSetup complete. Start a new Codex thread to use %s.\n' "$default_model"
 	printf 'Do not resume an existing thread for router models; existing threads keep their original provider.\n'
 }
 
