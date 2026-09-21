@@ -3,7 +3,7 @@ package catalog
 import (
 	"encoding/json"
 	"fmt"
-	"sort"
+	"strings"
 
 	"github.com/applyinnovations/bifrost-model-router/internal/config"
 )
@@ -33,25 +33,26 @@ func Hydrate(body []byte, cfg config.Config) ([]byte, error) {
 		if !ok {
 			continue
 		}
-		out = append(out, hydrateModel(original, resolved, cfg.Instructions))
+		if seen[resolved.Slug] {
+			continue
+		}
+		base := HydrateModel(original, resolved, cfg.Instructions)
+		out = append(out, base)
 		seen[resolved.Slug] = true
+		if resolved.Variant == nil {
+			out = appendConfiguredVariants(out, seen, base, resolved.BaseSlug, cfg, cfg.Instructions)
+		}
 	}
 	for _, slug := range cfg.ModelNames() {
 		if seen[slug] {
 			continue
 		}
 		resolved, _ := cfg.ResolveModel(slug)
-		out = append(out, hydrateModel(map[string]any{"id": slug}, resolved, cfg.Instructions))
+		base := HydrateModel(map[string]any{"id": slug}, resolved, cfg.Instructions)
+		out = append(out, base)
+		seen[slug] = true
+		out = appendConfiguredVariants(out, seen, base, slug, cfg, cfg.Instructions)
 	}
-
-	sort.SliceStable(out, func(i, j int) bool {
-		pi, _ := out[i]["priority"].(int)
-		pj, _ := out[j]["priority"].(int)
-		if pi != pj {
-			return pi < pj
-		}
-		return stringField(out[i], "slug") < stringField(out[j], "slug")
-	})
 	encoded, err := json.Marshal(responseEnvelope{Models: out})
 	if err != nil {
 		return nil, fmt.Errorf("encode hydrated catalog: %w", err)
@@ -74,47 +75,86 @@ func decodeModels(raw map[string]json.RawMessage) ([]map[string]any, error) {
 	return models, nil
 }
 
-func hydrateModel(original map[string]any, resolved config.ResolvedModel, instructions string) map[string]any {
+func appendConfiguredVariants(out []map[string]any, seen map[string]bool, base map[string]any, baseSlug string, cfg config.Config, instructions string) []map[string]any {
+	for _, resolved := range cfg.ResolvedModels() {
+		if resolved.BaseSlug != baseSlug || resolved.Variant == nil || seen[resolved.Slug] {
+			continue
+		}
+		out = append(out, HydrateVariant(base, resolved, instructions))
+		seen[resolved.Slug] = true
+	}
+	return out
+}
+
+// HydrateModel fills missing Codex catalog fields while preserving every field
+// supplied by the upstream provider. Identity is normalized to the configured
+// base slug for provider catalogs that only return a bare model ID.
+func HydrateModel(original map[string]any, resolved config.ResolvedModel, instructions string) map[string]any {
 	result := make(map[string]any, len(original)+32)
 	for key, value := range original {
 		result[key] = value
 	}
 	p := resolved.Model.Codex
 	result["slug"] = resolved.Slug
-	result["display_name"] = p.DisplayName
-	result["description"] = p.Description
-	result["default_reasoning_level"] = p.DefaultReasoningLevel
-	result["supported_reasoning_levels"] = p.SupportedReasoningLevels
-	result["shell_type"] = "unified_exec"
-	result["visibility"] = "list"
-	result["supported_in_api"] = true
-	result["priority"] = 1
-	result["additional_speed_tiers"] = []string{}
-	result["service_tiers"] = []any{}
-	result["availability_nux"] = nil
-	result["upgrade"] = nil
-	result["base_instructions"] = instructions
-	result["model_messages"] = map[string]any{"instructions_template": instructions}
-	result["include_skills_usage_instructions"] = false
-	result["include_plugin_usage_instructions"] = false
-	result["include_apps_usage_instructions"] = false
-	result["supports_reasoning_summary_parameter"] = p.SupportsReasoningSummaries
-	result["default_reasoning_summary"] = "auto"
-	result["support_verbosity"] = p.SupportsVerbosity
-	result["truncation_policy"] = map[string]any{"mode": "bytes", "limit": p.TruncationLimit}
-	result["supports_image_detail_original"] = p.SupportsImageDetailOriginal
-	result["context_window"] = p.ContextWindow
-	result["max_context_window"] = p.ContextWindow
-	result["effective_context_window_percent"] = p.EffectiveContextWindowPercent
-	result["experimental_supported_tools"] = []string{}
-	result["input_modalities"] = p.InputModalities
-	result["supports_search_tool"] = p.SupportsSearch
-	result["supports_experimental_context"] = false
-	result["use_responses_lite"] = false
-	result["node_repl_auto_review_required"] = false
-	result["node_repl_disabled"] = false
-	result["responses_mode"] = resolved.Model.ResponsesMode
+	setMissing(result, "display_name", p.DisplayName)
+	setMissing(result, "description", p.Description)
+	setMissing(result, "default_reasoning_level", p.DefaultReasoningLevel)
+	setMissing(result, "supported_reasoning_levels", p.SupportedReasoningLevels)
+	setMissing(result, "shell_type", "unified_exec")
+	setMissing(result, "visibility", "list")
+	setMissing(result, "supported_in_api", true)
+	setMissing(result, "priority", 1)
+	setMissing(result, "additional_speed_tiers", []string{})
+	setMissing(result, "service_tiers", []any{})
+	setMissing(result, "availability_nux", nil)
+	setMissing(result, "upgrade", nil)
+	setMissing(result, "base_instructions", instructions)
+	setMissing(result, "model_messages", map[string]any{"instructions_template": instructions})
+	setMissing(result, "include_skills_usage_instructions", false)
+	setMissing(result, "include_plugin_usage_instructions", false)
+	setMissing(result, "include_apps_usage_instructions", false)
+	setMissing(result, "supports_reasoning_summary_parameter", p.SupportsReasoningSummaries)
+	setMissing(result, "default_reasoning_summary", "auto")
+	setMissing(result, "support_verbosity", p.SupportsVerbosity)
+	setMissing(result, "truncation_policy", map[string]any{"mode": "bytes", "limit": p.TruncationLimit})
+	setMissing(result, "supports_image_detail_original", p.SupportsImageDetailOriginal)
+	setMissing(result, "context_window", p.ContextWindow)
+	setMissing(result, "max_context_window", p.MaxContextWindow)
+	setMissing(result, "effective_context_window_percent", p.EffectiveContextWindowPercent)
+	setMissing(result, "experimental_supported_tools", []string{})
+	setMissing(result, "input_modalities", p.InputModalities)
+	setMissing(result, "supports_search_tool", p.SupportsSearch)
+	setMissing(result, "supports_experimental_context", false)
+	setMissing(result, "use_responses_lite", false)
+	setMissing(result, "node_repl_auto_review_required", false)
+	setMissing(result, "node_repl_disabled", false)
+	setMissing(result, "responses_mode", resolved.Model.ResponsesMode)
 	return result
+}
+
+// HydrateVariant derives an opt-in context entry from an already hydrated base.
+func HydrateVariant(base map[string]any, resolved config.ResolvedModel, instructions string) map[string]any {
+	result := HydrateModel(base, resolved, instructions)
+	window := resolved.Model.Codex.ContextWindow
+	result["slug"] = resolved.Slug
+	result["display_name"] = strings.TrimSpace(stringField(base, "display_name")) + " (" + contextLabel(window) + ")"
+	result["context_window"] = window
+	result["max_context_window"] = window
+	result["effective_context_window_percent"] = resolved.Model.Codex.EffectiveContextWindowPercent
+	return result
+}
+
+func setMissing(object map[string]any, key string, value any) {
+	if _, exists := object[key]; !exists {
+		object[key] = value
+	}
+}
+
+func contextLabel(window int64) string {
+	if window >= 1000000 && window%1000000 == 0 {
+		return fmt.Sprintf("%dM", window/1000000)
+	}
+	return fmt.Sprintf("%dK", window/1000)
 }
 
 func stringField(object map[string]any, key string) string {

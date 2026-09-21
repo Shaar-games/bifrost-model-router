@@ -16,10 +16,12 @@ providers:
 models:
   openai/gpt-example:
     aliases: [gpt-example]
+    upstream_model: gpt-example
     codex:
       display_name: OpenAI GPT Example
       description: Example native OpenAI model; replace with a currently supported model.
       context_window: 128000
+      max_context_window: 256000
       effective_context_window_percent: 95
       default_reasoning_level: medium
       supported_reasoning_levels:
@@ -33,6 +35,8 @@ models:
       supports_reasoning_summaries: true
       supports_verbosity: true
       supports_image_detail_original: true
+    context_variants:
+      - context_window: 256000
   openai/gpt-5.6-luna:
     aliases: [gpt-5.6-luna]
     codex:

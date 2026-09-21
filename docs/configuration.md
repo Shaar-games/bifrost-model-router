@@ -19,6 +19,32 @@ Model settings override provider Responses mode and adapter. Codex metadata is
 conservatively defaulted; a polyfilled model may advertise only text input and
 cannot claim hosted search or native image-detail support.
 
+`upstream_model` controls the provider model sent after resolution and defaults
+to the portion of the canonical slug after `provider/`. Optional
+`context_variants` publish explicit catalog entries such as `-256k`, `-872k`,
+and `-1m` without changing the unsuffixed model. Each variant must be a positive
+multiple of 1,000 and no larger than the model's verified
+`codex.max_context_window`. The effective percentage inherits from the base
+profile when omitted:
+
+```yaml
+models:
+  openai/gpt-5.6-sol:
+    aliases: [gpt-5.6-sol]
+    upstream_model: gpt-5.6-sol
+    codex:
+      context_window: 272000
+      max_context_window: 872000
+      effective_context_window_percent: 95
+    context_variants:
+      - context_window: 872000
+```
+
+The generated `gpt-5.6-sol-872k` entry routes to upstream
+`gpt-5.6-sol`. Unknown suffixes are rejected. Unsuffixed entries retain context
+and capability fields returned by the upstream catalog; configured values only
+fill fields the provider omitted.
+
 Validate and print the effective defaulted configuration with:
 
 ```sh

@@ -37,6 +37,7 @@
         "display_name": { "type": "string" },
         "description": { "type": "string" },
         "context_window": { "type": "integer", "minimum": 1 },
+        "max_context_window": { "type": "integer", "minimum": 1 },
         "effective_context_window_percent": { "type": "integer", "minimum": 1, "maximum": 100 },
         "default_reasoning_level": { "type": "string" },
         "supported_reasoning_levels": { "type": "array", "items": { "$ref": "#/$defs/reasoningLevel" } },
@@ -48,14 +49,23 @@
         "truncation_limit": { "type": "integer", "minimum": 1 }
       }
     },
+    "contextVariant": {
+      "type": "object", "additionalProperties": false, "required": ["context_window"],
+      "properties": {
+        "context_window": { "type": "integer", "minimum": 1000, "multipleOf": 1000 },
+        "effective_context_window_percent": { "type": "integer", "minimum": 1, "maximum": 100 }
+      }
+    },
     "model": {
       "type": "object", "additionalProperties": false, "required": ["codex"],
       "properties": {
         "aliases": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
         "provider": { "type": "string", "minLength": 1 },
+        "upstream_model": { "type": "string", "minLength": 1 },
         "responses_mode": { "$ref": "#/$defs/responsesMode" },
         "adapter": { "$ref": "#/$defs/adapter" },
-        "codex": { "$ref": "#/$defs/codex" }
+        "codex": { "$ref": "#/$defs/codex" },
+        "context_variants": { "type": "array", "items": { "$ref": "#/$defs/contextVariant" }, "uniqueItems": true }
       }
     }
   }

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/applyinnovations/bifrost-model-router/internal/catalog"
 	"github.com/applyinnovations/bifrost-model-router/internal/config"
 	responsescompat "github.com/applyinnovations/bifrost-model-router/internal/responses"
 )
@@ -82,12 +83,17 @@ func (h *Handler) serveResponses(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	if resolved.Provider.CredentialMode == config.CredentialRequestPassthrough {
-		routed, err = rewriteModel(routed, strings.TrimPrefix(resolved.Slug, resolved.Model.Provider+"/"))
+		routed, err = rewriteModel(routed, resolved.UpstreamModel)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
 			return
 		}
 		h.proxyBifrost(w, req, chatGPTResponsesPath, routed)
+		return
+	}
+	routed, err = rewriteModel(routed, resolved.Model.Provider+"/"+resolved.UpstreamModel)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
 		return
 	}
 	h.proxyBifrost(w, req, "/v1/responses", routed)
@@ -208,6 +214,32 @@ func mergeCatalogs(direct, bifrost []byte, cfg config.Config) ([]byte, error) {
 	if err := json.Unmarshal(bifrostCatalog["models"], &bifrostModels); err != nil {
 		return nil, errors.New("Bifrost catalog has no models array")
 	}
+	merged := make([]json.RawMessage, 0, len(directModels)+len(bifrostModels))
+	for _, raw := range directModels {
+		merged = append(merged, raw)
+		var base map[string]any
+		if json.Unmarshal(raw, &base) != nil {
+			continue
+		}
+		identity := stringValue(base, "slug")
+		if identity == "" {
+			identity = stringValue(base, "id")
+		}
+		resolved, ok := cfg.ResolveModel(identity)
+		if !ok || resolved.Variant != nil {
+			continue
+		}
+		for _, candidate := range cfg.ResolvedModels() {
+			if candidate.BaseSlug != resolved.BaseSlug || candidate.Variant == nil {
+				continue
+			}
+			variant, err := json.Marshal(catalog.HydrateVariant(base, candidate, cfg.Instructions))
+			if err != nil {
+				return nil, err
+			}
+			merged = append(merged, variant)
+		}
+	}
 	for _, raw := range bifrostModels {
 		var identity struct {
 			Slug string `json:"slug"`
@@ -219,14 +251,19 @@ func mergeCatalogs(direct, bifrost []byte, cfg config.Config) ([]byte, error) {
 		if ok && resolved.Provider.CredentialMode == config.CredentialRequestPassthrough {
 			continue
 		}
-		directModels = append(directModels, raw)
+		merged = append(merged, raw)
 	}
-	models, err := json.Marshal(directModels)
+	models, err := json.Marshal(merged)
 	if err != nil {
 		return nil, err
 	}
 	directCatalog["models"] = models
 	return json.Marshal(directCatalog)
+}
+
+func stringValue(object map[string]any, key string) string {
+	value, _ := object[key].(string)
+	return value
 }
 
 func writeError(w http.ResponseWriter, status int, code, message string) {

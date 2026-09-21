@@ -85,3 +85,35 @@ func TestHydrateIsDeterministic(t *testing.T) {
 		t.Fatalf("hydration is not deterministic:\n%s\n%s", one, two)
 	}
 }
+
+func TestHydratePreservesUpstreamContextAndGeneratesAdjacentVariant(t *testing.T) {
+	cfg := testConfig(t)
+	model := cfg.Models["openai/a"]
+	model.Codex.MaxContextWindow = 872000
+	model.ContextVariants = []config.ContextVariant{{ContextWindow: 872000, EffectiveContextWindowPercent: 95}}
+	cfg.Models["openai/a"] = model
+	if err := cfg.ApplyDefaultsAndValidate(); err != nil {
+		t.Fatal(err)
+	}
+	body := []byte(`{"models":[{"slug":"a","display_name":"Upstream A","description":"upstream","context_window":272000,"max_context_window":872000,"effective_context_window_percent":80,"supports_experimental_context":true,"future":{"keep":true}}]}`)
+	out, err := Hydrate(body, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Models []map[string]any `json:"models"`
+	}
+	if err := json.Unmarshal(out, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded.Models) != 3 {
+		t.Fatalf("models = %s", out)
+	}
+	base, variant := decoded.Models[0], decoded.Models[1]
+	if base["context_window"] != float64(272000) || base["max_context_window"] != float64(872000) || base["effective_context_window_percent"] != float64(80) || base["supports_experimental_context"] != true || base["future"] == nil {
+		t.Fatalf("base metadata was overwritten: %#v", base)
+	}
+	if variant["slug"] != "a-872k" || variant["display_name"] != "Upstream A (872K)" || variant["context_window"] != float64(872000) || variant["max_context_window"] != float64(872000) || variant["effective_context_window_percent"] != float64(95) {
+		t.Fatalf("variant = %#v", variant)
+	}
+}

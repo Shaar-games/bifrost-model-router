@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/applyinnovations/bifrost-model-router/internal/config"
@@ -20,7 +21,7 @@ func testConfig(t *testing.T) config.Config {
 			"voke":   {CredentialMode: config.CredentialBifrost, ResponsesMode: config.ResponsesChatPolyfill},
 		},
 		Models: map[string]config.ModelProfile{
-			"openai/sol":  {Aliases: []string{"sol"}, Codex: config.CodexProfile{}},
+			"openai/sol":  {Aliases: []string{"sol"}, Codex: config.CodexProfile{ContextWindow: 272000, MaxContextWindow: 872000}, ContextVariants: []config.ContextVariant{{ContextWindow: 872000}}},
 			"openai/luna": {Aliases: []string{"luna"}, Codex: config.CodexProfile{}},
 			"voke/glm":    {Aliases: []string{"glm"}, Codex: config.CodexProfile{}},
 		},
@@ -39,6 +40,7 @@ func TestResponsesDispatch(t *testing.T) {
 		wantModel string
 	}{
 		{"OpenAI native", `{"model":"openai/sol","input":"hi"}`, chatGPTResponsesPath, "sol"},
+		{"OpenAI context variant", `{"model":"sol-872k","input":"hi"}`, chatGPTResponsesPath, "sol"},
 		{"managed provider", `{"model":"voke/glm","input":"hi"}`, "/v1/responses", "voke/glm"},
 		{"hosted tool fallback", `{"model":"voke/glm","input":"hi","tools":[{"type":"web_search"}]}`, chatGPTResponsesPath, "luna"},
 	}
@@ -122,8 +124,21 @@ func TestModelsPreserveDirectMetadataAndAppendManagedModels(t *testing.T) {
 	if err := json.Unmarshal(resp.Body.Bytes(), &catalog); err != nil {
 		t.Fatal(err)
 	}
-	if len(catalog.Models) != 2 || catalog.Models[0].Slug != "sol" || catalog.Models[0].DisplayName != "Direct Sol" || catalog.Models[0].ContextWindow != 872000 || catalog.Models[1].Slug != "voke/glm" || catalog.RecommendedModel != "sol" {
+	if len(catalog.Models) != 3 || catalog.Models[0].Slug != "sol" || catalog.Models[0].DisplayName != "Direct Sol" || catalog.Models[0].ContextWindow != 872000 || catalog.Models[1].Slug != "sol-872k" || catalog.Models[1].DisplayName != "Direct Sol (872K)" || catalog.Models[2].Slug != "voke/glm" || catalog.RecommendedModel != "sol" {
 		t.Fatalf("merged catalog = %#v", catalog)
+	}
+}
+
+func TestResponsesRejectsUnknownContextVariant(t *testing.T) {
+	handler, err := New(testConfig(t), "http://127.0.0.1:1", "http://127.0.0.1:1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", stringsReader(`{"model":"sol-512k","input":"hi"}`))
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusBadRequest || !strings.Contains(resp.Body.String(), "unresolved_model") {
+		t.Fatalf("status = %d body=%s", resp.Code, resp.Body.String())
 	}
 }
 

@@ -34,6 +34,8 @@ type Config struct {
 	HostedToolFallbackModel string                     `json:"hosted_tool_fallback_model,omitempty" yaml:"hosted_tool_fallback_model,omitempty"`
 	Providers               map[string]ProviderProfile `json:"providers" yaml:"providers"`
 	Models                  map[string]ModelProfile    `json:"models" yaml:"models"`
+	resolutionIndex         map[string]ResolvedModel
+	resolvedModels          []ResolvedModel
 }
 
 type ProviderProfile struct {
@@ -51,6 +53,7 @@ type CodexProfile struct {
 	DisplayName                   string           `json:"display_name,omitempty" yaml:"display_name,omitempty"`
 	Description                   string           `json:"description,omitempty" yaml:"description,omitempty"`
 	ContextWindow                 int64            `json:"context_window,omitempty" yaml:"context_window,omitempty"`
+	MaxContextWindow              int64            `json:"max_context_window,omitempty" yaml:"max_context_window,omitempty"`
 	EffectiveContextWindowPercent int64            `json:"effective_context_window_percent,omitempty" yaml:"effective_context_window_percent,omitempty"`
 	DefaultReasoningLevel         string           `json:"default_reasoning_level,omitempty" yaml:"default_reasoning_level,omitempty"`
 	SupportedReasoningLevels      []ReasoningLevel `json:"supported_reasoning_levels,omitempty" yaml:"supported_reasoning_levels,omitempty"`
@@ -62,12 +65,19 @@ type CodexProfile struct {
 	TruncationLimit               int64            `json:"truncation_limit,omitempty" yaml:"truncation_limit,omitempty"`
 }
 
+type ContextVariant struct {
+	ContextWindow                 int64 `json:"context_window" yaml:"context_window"`
+	EffectiveContextWindowPercent int64 `json:"effective_context_window_percent,omitempty" yaml:"effective_context_window_percent,omitempty"`
+}
+
 type ModelProfile struct {
-	Aliases       []string      `json:"aliases,omitempty" yaml:"aliases,omitempty"`
-	Provider      string        `json:"provider,omitempty" yaml:"provider,omitempty"`
-	ResponsesMode ResponsesMode `json:"responses_mode,omitempty" yaml:"responses_mode,omitempty"`
-	Adapter       string        `json:"adapter,omitempty" yaml:"adapter,omitempty"`
-	Codex         CodexProfile  `json:"codex" yaml:"codex"`
+	Aliases         []string         `json:"aliases,omitempty" yaml:"aliases,omitempty"`
+	Provider        string           `json:"provider,omitempty" yaml:"provider,omitempty"`
+	UpstreamModel   string           `json:"upstream_model,omitempty" yaml:"upstream_model,omitempty"`
+	ResponsesMode   ResponsesMode    `json:"responses_mode,omitempty" yaml:"responses_mode,omitempty"`
+	Adapter         string           `json:"adapter,omitempty" yaml:"adapter,omitempty"`
+	Codex           CodexProfile     `json:"codex" yaml:"codex"`
+	ContextVariants []ContextVariant `json:"context_variants,omitempty" yaml:"context_variants,omitempty"`
 }
 
 func Decode(r io.Reader) (Config, error) {
@@ -164,18 +174,37 @@ func (c *Config) ApplyDefaultsAndValidate() error {
 		if model.Adapter == "" {
 			model.Adapter = provider.Adapter
 		}
+		if model.UpstreamModel == "" {
+			model.UpstreamModel = strings.SplitN(slug, "/", 2)[1]
+		}
 		applyCodexDefaults(slug, &model.Codex)
 		if err := validateModel(slug, model); err != nil {
 			return err
 		}
-		for _, name := range append([]string{slug}, model.Aliases...) {
+		for _, name := range modelNames(slug, model) {
 			if previous, exists := owned[name]; exists && previous != slug {
 				return fmt.Errorf("model name or alias %q is owned by both %q and %q", name, previous, slug)
 			}
 			owned[name] = slug
 		}
+		for i := range model.ContextVariants {
+			variant := &model.ContextVariants[i]
+			if variant.EffectiveContextWindowPercent == 0 {
+				variant.EffectiveContextWindowPercent = model.Codex.EffectiveContextWindowPercent
+			}
+			if err := validateVariant(slug, model, *variant); err != nil {
+				return err
+			}
+			for _, name := range variantNames(slug, model, variant.ContextWindow) {
+				if previous, exists := owned[name]; exists {
+					return fmt.Errorf("model name or alias %q collides with %q", name, previous)
+				}
+				owned[name] = slug + "#variant"
+			}
+		}
 		c.Models[slug] = model
 	}
+	c.buildResolutionIndex()
 
 	if c.HostedToolFallbackModel != "" {
 		fallback, ok := c.ResolveModel(c.HostedToolFallbackModel)
@@ -210,6 +239,9 @@ func validateProvider(name string, p ProviderProfile) error {
 }
 
 func validateModel(slug string, m ModelProfile) error {
+	if strings.TrimSpace(m.UpstreamModel) == "" {
+		return fmt.Errorf("model %q upstream_model cannot be empty", slug)
+	}
 	if !validResponsesMode(m.ResponsesMode) {
 		return fmt.Errorf("model %q has invalid responses_mode %q", slug, m.ResponsesMode)
 	}
@@ -229,6 +261,9 @@ func validateModel(slug string, m ModelProfile) error {
 	if m.Codex.ContextWindow <= 0 {
 		return fmt.Errorf("model %q context_window must be positive", slug)
 	}
+	if m.Codex.MaxContextWindow < m.Codex.ContextWindow {
+		return fmt.Errorf("model %q max_context_window must be at least context_window", slug)
+	}
 	if m.Codex.EffectiveContextWindowPercent < 1 || m.Codex.EffectiveContextWindowPercent > 100 {
 		return fmt.Errorf("model %q effective_context_window_percent must be between 1 and 100", slug)
 	}
@@ -247,6 +282,19 @@ func validateModel(slug string, m ModelProfile) error {
 	return nil
 }
 
+func validateVariant(slug string, model ModelProfile, variant ContextVariant) error {
+	if variant.ContextWindow <= 0 || variant.ContextWindow%1000 != 0 {
+		return fmt.Errorf("model %q context variant must be a positive multiple of 1000", slug)
+	}
+	if variant.ContextWindow > model.Codex.MaxContextWindow {
+		return fmt.Errorf("model %q context variant %d exceeds max_context_window %d", slug, variant.ContextWindow, model.Codex.MaxContextWindow)
+	}
+	if variant.EffectiveContextWindowPercent < 1 || variant.EffectiveContextWindowPercent > 100 {
+		return fmt.Errorf("model %q context variant effective_context_window_percent must be between 1 and 100", slug)
+	}
+	return nil
+}
+
 func applyCodexDefaults(slug string, p *CodexProfile) {
 	if p.DisplayName == "" {
 		p.DisplayName = slug
@@ -256,6 +304,9 @@ func applyCodexDefaults(slug string, p *CodexProfile) {
 	}
 	if p.ContextWindow == 0 {
 		p.ContextWindow = 131072
+	}
+	if p.MaxContextWindow == 0 {
+		p.MaxContextWindow = p.ContextWindow
 	}
 	if p.EffectiveContextWindowPercent == 0 {
 		p.EffectiveContextWindowPercent = 95
