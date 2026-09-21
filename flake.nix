@@ -5,7 +5,9 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     systems.url = "github:nix-systems/default-linux";
     bifrost = {
-      url = "github:maximhq/bifrost/ed79592fc4771f12f2717dd7c9ab668e663a08f3";
+      # Forked upstream to preserve OpenAI-compatible model display names and
+      # reasoning-level metadata through Bifrost's model conversion pipeline.
+      url = "github:applyinnovations/bifrost/bc0ff9e2bc56381c668301d35fa0cc378edff4d3";
       flake = false;
     };
   };
@@ -82,7 +84,13 @@
             common
             // {
               pname = "codex-model-router-plugin";
+              vendorHash = "sha256-t4CxfKmrKw7pUXX6wEjT3cDTyjMze6UsLr0jrQKaSfY=";
               doCheck = false;
+              postPatch = ''
+                cp -R ${bifrost}/core bifrost-core
+                chmod -R u+w bifrost-core
+                go mod edit -replace github.com/maximhq/bifrost/core=./bifrost-core
+              '';
               buildPhase = ''
                 runHook preBuild
                 CGO_ENABLED=1 go build -buildmode=plugin -trimpath \
@@ -102,7 +110,7 @@
             inherit version;
             src = bifrost;
             modRoot = "transports";
-            vendorHash = "sha256-tlKIt38Rh5KQu4ny534eqC6PPE1DTLQEC5m+rHAUJJ0=";
+            vendorHash = "sha256-rcqc3JCHdXkLdev1qEYPJAPs+I2iBImlT7TY3x4f9EM=";
             subPackages = [ "bifrost-http" ];
             tags = [ "sqlite_static" ];
             postPatch = ''
@@ -338,7 +346,7 @@
                 export GOPATH=$TMPDIR/go
                 cp -R ${self} source
                 chmod -R u+w source
-                cp -R ${self.packages.${system}.plugin.goModules} source/vendor
+                cp -R ${self.packages.${system}.router.goModules} source/vendor
                 cd source
                 go vet ./...
                 touch $out
@@ -410,7 +418,7 @@
                 export GOPATH=$TMPDIR/go
                 cp -R ${self} source
                 chmod -R u+w source
-                cp -R ${self.packages.${system}.plugin.goModules} source/vendor
+                cp -R ${self.packages.${system}.router.goModules} source/vendor
                 cd source
                 go test -race ./...
                 touch $out
@@ -430,7 +438,7 @@
                 export GOPATH=$TMPDIR/go
                 cp -R ${self} source
                 chmod -R u+w source
-                cp -R ${self.packages.${system}.plugin.goModules} source/vendor
+                cp -R ${self.packages.${system}.router.goModules} source/vendor
                 cd source
                 go test ./internal/catalog -run '^$' -fuzz FuzzHydrateDeterministic -fuzztime 2s
                 touch $out
@@ -450,7 +458,7 @@
                 export GOPATH=$TMPDIR/go
                 cp -R ${self} source
                 chmod -R u+w source
-                cp -R ${self.packages.${system}.plugin.goModules} source/vendor
+                cp -R ${self.packages.${system}.router.goModules} source/vendor
                 cd source
                 go test ./...
                 touch $out

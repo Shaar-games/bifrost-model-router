@@ -51,6 +51,11 @@ For each requested provider, determine:
    and tool support.
 7. Existing local router state that must be merged and preserved.
 
+Default to every model returned by authenticated, account-aware discovery. Do
+not ask every user to curate a model list. If the user says the model picker is
+too large or asks for a subset, discover the available models first, then ask
+which exact models or model families they want visible.
+
 Use current official provider documentation as the primary source. Use an
 authenticated model-list endpoint when it is account-aware. If discovery is
 global rather than plan-aware, intersect it with plan documentation. When
@@ -96,6 +101,27 @@ Generate one complete Bifrost JSON configuration. Use
 `config/quickstart.json`, `config/bifrost.example.json`, and
 `docs/configuration.md` as structural references.
 
+Treat the Codex router URL and each Bifrost upstream URL as different layers:
+
+- The Codex model provider `base_url` must point at this router's
+  OpenAI-compatible API root and must end in `/v1` without a trailing slash.
+  Codex appends operation paths such as `/responses` and `/models`; the setup
+  script must generate this value for the user.
+- For a standard OpenAI-compatible provider handled by Bifrost, set
+  `providers.<name>.network_config.base_url` to the upstream origin or path
+  prefix immediately before `/v1`, without a terminal `/v1`. Bifrost appends
+  paths such as `/v1/models` and `/v1/chat/completions`; including `/v1` in
+  this base URL would produce a duplicated `/v1/v1/...` path.
+- Do not add or strip `/v1` globally. For a Bifrost-native provider, follow its
+  adapter contract. When an OpenAI-compatible provider uses nonstandard paths,
+  keep the appropriate upstream base and configure operation-specific Bifrost
+  `request_path_overrides` from official provider documentation.
+
+Before applying a provider configuration, construct and verify the final model
+listing and inference URLs. Reject duplicated version segments and do not copy
+a provider-documented API base into Bifrost without accounting for the path
+that the selected Bifrost adapter appends.
+
 Prefer authenticated, account-aware model discovery. When the provider's model
 endpoint reflects the models available to the supplied credential:
 
@@ -109,6 +135,27 @@ The router then passes newly discovered upstream models into Codex immediately;
 users do not need to regenerate configuration when their provider adds a model.
 Provider-level `codex_defaults` supply conservative metadata for new models,
 while fields returned by the upstream catalog take precedence.
+
+If discovery does not return `display_name`, derive a readable fallback or add
+exact `model_name_overrides` for only the requested models. Do not replace
+dynamic discovery with a static catalog merely to improve labels. Preserve
+upstream display names and reasoning-level metadata whenever they are present.
+
+To offer an optional managed-provider model allowlist without restoring a
+static router catalog:
+
+1. leave the provider credential's model permission unrestricted so Bifrost can
+   perform complete authenticated discovery;
+2. keep the router provider's `discover_models` set to `true`;
+3. set that provider's `allowed_models` on the local Bifrost virtual key to
+   exact upstream model IDs or validated `regex:` patterns.
+
+The virtual-key policy must govern both authorization and the model listing
+returned for that user. `allowed_models: ["*"]` opts into every currently and
+subsequently discovered model. An exact list intentionally requires a policy
+change for new models; a `regex:` family can admit matching future models. Do
+not copy an allowlist into explicit router model entries, and do not disable
+discovery merely to shorten the Codex model picker.
 
 If the provider has no model endpoint, or its endpoint is a global catalog that
 does not reflect account/plan availability, disable `discover_models` and use
@@ -162,8 +209,12 @@ explicit user override or verified availability fallback.
    output, logs, or Codex configuration.
 5. Report the configured providers, plans, models, default, config location,
    env-file location, backup path, and verification performed.
-6. Tell the user to start a new Codex thread. Do not suggest resuming an old
-   thread with the new provider.
+6. Tell the user to fully quit and reopen Codex after the proxy and Codex
+   configuration are installed. Closing only the current task is not a
+   substitute for restarting the application.
+7. After the restart, tell the user to create a new Codex task. Existing tasks
+   retain their original provider/session state and must not be used to verify
+   the new provider or model catalog.
 
 If verification fails, diagnose and continue working. Ask the user only for
 information or actions that cannot be safely discovered or performed locally.

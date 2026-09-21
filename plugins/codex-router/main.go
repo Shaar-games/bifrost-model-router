@@ -111,6 +111,11 @@ func PreLLMHook(ctx *schemas.BifrostContext, req *schemas.BifrostRequest) (*sche
 	if !ok {
 		return req, shortCircuit(400, "unresolved_model", "model is not present in the router catalog"), nil
 	}
+	// Resolve aliases and cached bare upstream IDs before Bifrost dispatches.
+	// In particular, upstream IDs containing a slash must retain the configured
+	// provider rather than treating their first path component as a provider.
+	req.SetProvider(schemas.ModelProvider(resolved.Model.Provider))
+	req.SetModel(resolved.UpstreamModel)
 	switch resolved.Model.ResponsesMode {
 	case config.ResponsesNative:
 		return req, nil, nil

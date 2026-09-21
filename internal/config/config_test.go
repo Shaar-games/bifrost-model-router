@@ -110,6 +110,29 @@ models:
 	}
 }
 
+func TestDiscoveredModelWithNestedUpstreamIDResolvesFromNameOverride(t *testing.T) {
+	cfg, err := Decode(strings.NewReader(`
+version: 1
+providers:
+  openai: {credential_mode: request_passthrough, responses_mode: native}
+  managed:
+    credential_mode: bifrost
+    responses_mode: chat_polyfill
+    discover_models: true
+    model_name_overrides:
+      vendor/reasoner: Reasoner
+models:
+  openai/default: {aliases: [default], codex: {}}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, ok := cfg.ResolveModel("vendor/reasoner")
+	if !ok || resolved.Slug != "managed/vendor/reasoner" || resolved.UpstreamModel != "vendor/reasoner" || resolved.Model.Provider != "managed" {
+		t.Fatalf("nested discovered model = %#v, %v", resolved, ok)
+	}
+}
+
 func TestContextVariantValidation(t *testing.T) {
 	tests := []struct{ name, variant string }{
 		{"non-round", "872001"},

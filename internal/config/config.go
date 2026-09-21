@@ -39,11 +39,12 @@ type Config struct {
 }
 
 type ProviderProfile struct {
-	CredentialMode CredentialMode `json:"credential_mode" yaml:"credential_mode"`
-	ResponsesMode  ResponsesMode  `json:"responses_mode" yaml:"responses_mode"`
-	Adapter        string         `json:"adapter,omitempty" yaml:"adapter,omitempty"`
-	DiscoverModels bool           `json:"discover_models,omitempty" yaml:"discover_models,omitempty"`
-	CodexDefaults  CodexProfile   `json:"codex_defaults,omitempty" yaml:"codex_defaults,omitempty"`
+	CredentialMode     CredentialMode    `json:"credential_mode" yaml:"credential_mode"`
+	ResponsesMode      ResponsesMode     `json:"responses_mode" yaml:"responses_mode"`
+	Adapter            string            `json:"adapter,omitempty" yaml:"adapter,omitempty"`
+	DiscoverModels     bool              `json:"discover_models,omitempty" yaml:"discover_models,omitempty"`
+	ModelNameOverrides map[string]string `json:"model_name_overrides,omitempty" yaml:"model_name_overrides,omitempty"`
+	CodexDefaults      CodexProfile      `json:"codex_defaults,omitempty" yaml:"codex_defaults,omitempty"`
 }
 
 type ReasoningLevel struct {
@@ -243,6 +244,11 @@ func validateProvider(name string, p ProviderProfile) error {
 	}
 	if !validAdapter(p.Adapter) {
 		return fmt.Errorf("provider %q has unknown adapter %q", name, p.Adapter)
+	}
+	for model, displayName := range p.ModelNameOverrides {
+		if strings.TrimSpace(model) == "" || strings.TrimSpace(displayName) == "" {
+			return fmt.Errorf("provider %q model_name_overrides must use non-empty model IDs and names", name)
+		}
 	}
 	return nil
 }

@@ -23,6 +23,11 @@
         "responses_mode": { "$ref": "#/$defs/responsesMode" },
         "adapter": { "$ref": "#/$defs/adapter" },
         "discover_models": { "type": "boolean" },
+		"model_name_overrides": {
+		  "type": "object",
+		  "propertyNames": { "minLength": 1 },
+		  "additionalProperties": { "type": "string", "minLength": 1 }
+		},
         "codex_defaults": { "$ref": "#/$defs/codex" }
       }
     },

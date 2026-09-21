@@ -101,7 +101,15 @@ func HydrateModel(original map[string]any, resolved config.ResolvedModel, instru
 	}
 	p := resolved.Model.Codex
 	result["slug"] = resolved.Slug
-	setMissing(result, "display_name", p.DisplayName)
+	// The canonical ID prevents model IDs that contain their own slash (for
+	// example vendor/model) from being mistaken for a Bifrost provider by
+	// Codex on the next request.
+	result["id"] = resolved.Slug
+	if displayName := resolved.Provider.ModelNameOverrides[resolved.UpstreamModel]; displayName != "" {
+		result["display_name"] = displayName
+	} else {
+		setMissing(result, "display_name", p.DisplayName)
+	}
 	setMissing(result, "description", p.Description)
 	setMissing(result, "default_reasoning_level", p.DefaultReasoningLevel)
 	setMissing(result, "supported_reasoning_levels", p.SupportedReasoningLevels)
