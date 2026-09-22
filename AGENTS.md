@@ -71,13 +71,13 @@ availability remains uncertain, perform a minimal model request after warning
 that it may consume a small amount of plan quota.
 
 Resolve context windows and other capability metadata independently from model
-availability. Prefer fields returned by the configured provider. When its
-model endpoint omits them, use current official documentation for that exact
-provider/model combination and add explicit router metadata overrides while
-leaving discovery enabled. Retain conservative defaults only for models whose
-limits remain unverified. Never raise a provider-wide context default merely
-because most of its models are larger, and never use OpenRouter context data
-to override a provider-specific limit.
+availability. Fields returned by the configured provider always take
+precedence. When its model endpoint omits a context window, let the router use
+the context length from an exact or unambiguous OpenRouter model-ID match.
+Retain the conservative provider default only when neither dynamic source has
+a trustworthy value. Do not hardcode per-model context windows in application
+configuration merely to compensate for an incomplete model endpoint, and
+never raise a provider-wide default merely because most models are larger.
 
 Never invent model IDs, context windows, plan entitlements, or capabilities.
 For an OpenAI-compatible provider with unverified richer capabilities, use the
@@ -156,10 +156,11 @@ conservative metadata for new models, while fields returned by the upstream
 catalog take precedence. Codex may still require a full application restart
 and a new task before it reloads the catalog.
 
-Use OpenRouter's editorial catalog as the primary display-name source when an
-exact or unambiguous model-ID match exists. This lookup is naming metadata
-only: never use it to infer account availability, routing, permissions,
-capabilities, context windows, or reasoning support. Name precedence is:
+Use OpenRouter's catalog as the primary display-name source and as a fallback
+for missing context length when an exact or unambiguous model-ID match exists.
+Never use it to infer account availability, routing, permissions, modalities,
+tool support, or reasoning support. Provider-returned context metadata takes
+precedence. Name precedence is:
 
 1. an exact `model_name_overrides` entry;
 2. an exact or unambiguous OpenRouter editorial match;
@@ -175,7 +176,8 @@ models, for example `Model (VokeAPI)`. Omit the redundant suffix for direct
 OpenAI models. OpenRouter metadata is cached and temporary lookup failures must
 degrade to the dynamic provider/ID fallback. Do not replace discovery with a
 static catalog merely to improve labels. Preserve upstream descriptions,
-capabilities, context windows, and reasoning-level metadata.
+capabilities, context windows, and reasoning-level metadata; only fill a
+context window when the provider omitted it.
 
 To offer an optional managed-provider model allowlist without restoring a
 static router catalog:

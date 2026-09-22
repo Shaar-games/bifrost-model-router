@@ -263,8 +263,8 @@ func TestHydratePrefersEditorialNameAndUsesConfiguredProviderLabel(t *testing.T)
 func TestDecorateCatalogPreservesEnvelopeAndUsesEditorialName(t *testing.T) {
 	cfg := testConfig(t)
 	body := []byte(`{"models":[{"slug":"other/b","display_name":"b [Other]"}],"recommended_model":"other/b"}`)
-	out, err := DecorateCatalog(body, cfg, func(provider, upstream string) (string, bool) {
-		return "Publisher: Better Name", provider == "other" && upstream == "b"
+	out, err := DecorateCatalog(body, cfg, func(provider, upstream string) (string, int64, bool) {
+		return "Publisher: Better Name", 1000000, provider == "other" && upstream == "b"
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -278,6 +278,41 @@ func TestDecorateCatalogPreservesEnvelopeAndUsesEditorialName(t *testing.T) {
 	}
 	if decoded.RecommendedModel != "other/b" || modelBySlug(decoded.Models, "other/b")["display_name"] != "Better Name (Other)" {
 		t.Fatalf("decorated catalog = %s", out)
+	}
+}
+
+func TestHydrateUsesDynamicContextOnlyWhenProviderOmitsIt(t *testing.T) {
+	cfg := testConfig(t)
+	provider := cfg.Providers["other"]
+	provider.DiscoverModels = true
+	provider.CodexDefaults = config.CodexProfile{ContextWindow: 131072, InputModalities: []string{"text"}}
+	cfg.Providers["other"] = provider
+	if err := cfg.ApplyDefaultsAndValidate(); err != nil {
+		t.Fatal(err)
+	}
+	lookup := func(_, _ string) (string, int64, bool) {
+		return "Publisher: Dynamic", 1000000, true
+	}
+	out, err := HydrateWithMetadata([]byte(`{"models":[
+		{"slug":"other/dynamic","display_name":"dynamic"},
+		{"slug":"other/provider-value","display_name":"provider-value","context_window":262144,"max_context_window":524288}
+	]}`), cfg, lookup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Models []map[string]any `json:"models"`
+	}
+	if err := json.Unmarshal(out, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	dynamic := modelBySlug(decoded.Models, "other/dynamic")
+	providerValue := modelBySlug(decoded.Models, "other/provider-value")
+	if dynamic["context_window"] != float64(1000000) || dynamic["max_context_window"] != float64(1000000) {
+		t.Fatalf("dynamic metadata = %#v", dynamic)
+	}
+	if providerValue["context_window"] != float64(262144) || providerValue["max_context_window"] != float64(524288) {
+		t.Fatalf("provider metadata was overwritten: %#v", providerValue)
 	}
 }
 

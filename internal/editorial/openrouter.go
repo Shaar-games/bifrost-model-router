@@ -13,16 +13,23 @@ import (
 const DefaultOpenRouterModelsURL = "https://openrouter.ai/api/v1/models"
 
 type catalogEntry struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	ContextLength int64  `json:"context_length"`
 }
 
 type catalogEnvelope struct {
 	Data []catalogEntry `json:"data"`
 }
 
-// Resolver caches OpenRouter's editorial model names. Availability, routing,
-// permissions, and capabilities continue to come from the configured provider.
+type modelMetadata struct {
+	name          string
+	contextLength int64
+}
+
+// Resolver caches OpenRouter's editorial names and model context lengths.
+// Availability, routing, and permissions continue to come from the configured
+// provider. Provider-returned metadata takes precedence at the call site.
 type Resolver struct {
 	url       string
 	client    *http.Client
@@ -30,8 +37,8 @@ type Resolver struct {
 	retryTTL  time.Duration
 	mu        sync.Mutex
 	expiresAt time.Time
-	byID      map[string]string
-	byLeaf    map[string]string
+	byID      map[string]modelMetadata
+	byLeaf    map[string]modelMetadata
 }
 
 func NewOpenRouterResolver() *Resolver {
@@ -52,8 +59,15 @@ func NewResolver(url string, client *http.Client, ttl time.Duration) *Resolver {
 // model ID match or an unambiguous match for the upstream ID without a creator
 // prefix. Failures are cached briefly and degrade to the caller's fallback.
 func (r *Resolver) Lookup(_ string, upstreamModel string) (string, bool) {
+	name, _, ok := r.LookupMetadata("", upstreamModel)
+	return name, ok && name != ""
+}
+
+// LookupMetadata returns dynamic catalog metadata for an exact model ID or an
+// unambiguous creator-less model ID. It never determines model availability.
+func (r *Resolver) LookupMetadata(_ string, upstreamModel string) (string, int64, bool) {
 	if r == nil || strings.TrimSpace(upstreamModel) == "" {
-		return "", false
+		return "", 0, false
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -63,14 +77,14 @@ func (r *Resolver) Lookup(_ string, upstreamModel string) (string, bool) {
 		}
 	}
 	key := normalizeID(upstreamModel)
-	if name := r.byID[key]; name != "" {
-		return name, true
+	if metadata, ok := r.byID[key]; ok {
+		return metadata.name, metadata.contextLength, true
 	}
 	if !strings.Contains(key, "/") {
-		name, ok := r.byLeaf[key]
-		return name, ok && name != ""
+		metadata, ok := r.byLeaf[key]
+		return metadata.name, metadata.contextLength, ok
 	}
-	return "", false
+	return "", 0, false
 }
 
 func (r *Resolver) refresh() error {
@@ -93,7 +107,7 @@ func (r *Resolver) refresh() error {
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 16<<20)).Decode(&envelope); err != nil {
 		return err
 	}
-	byID := make(map[string]string, len(envelope.Data))
+	byID := make(map[string]modelMetadata, len(envelope.Data))
 	leafCandidates := make(map[string]map[string]bool)
 	for _, entry := range envelope.Data {
 		id := normalizeID(entry.ID)
@@ -103,8 +117,8 @@ func (r *Resolver) refresh() error {
 		}
 		// Prefer the canonical listing over marketplace variants such as :free.
 		variant := strings.LastIndexByte(entry.ID, ':') > strings.LastIndexByte(entry.ID, '/')
-		if !variant || byID[id] == "" {
-			byID[id] = name
+		if _, exists := byID[id]; !variant || !exists {
+			byID[id] = modelMetadata{name: name, contextLength: entry.ContextLength}
 		}
 		leaf := id
 		if slash := strings.LastIndexByte(id, '/'); slash >= 0 {
@@ -115,7 +129,7 @@ func (r *Resolver) refresh() error {
 		}
 		leafCandidates[leaf][id] = true
 	}
-	byLeaf := make(map[string]string)
+	byLeaf := make(map[string]modelMetadata)
 	for leaf, candidates := range leafCandidates {
 		if len(candidates) != 1 {
 			continue

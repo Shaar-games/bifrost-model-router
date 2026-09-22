@@ -162,6 +162,9 @@ func TestPreLLMSelectsPolyfillForDiscoveredModel(t *testing.T) {
 
 func TestPostHookHydratesCodexCatalog(t *testing.T) {
 	initTestPlugin(t)
+	originalLookup := metadataLookup
+	metadataLookup = func(_, _ string) (string, int64, bool) { return "", 0, false }
+	t.Cleanup(func() { metadataLookup = originalLookup })
 	req := &schemas.HTTPRequest{Method: "GET", Path: "/v1/models", Query: map[string]string{"client_version": "test"}}
 	resp := &schemas.HTTPResponse{StatusCode: 200, Body: []byte(`{"data":[{"id":"openai/a"}]}`)}
 	if err := HTTPTransportPostHook(nil, req, resp); err != nil {

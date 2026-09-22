@@ -40,16 +40,20 @@ Discovered catalog IDs are normalized to canonical `provider/model` IDs before
 Codex sees them. This is required when the upstream model ID itself contains a
 slash: Codex must send the configured Bifrost provider, not interpret the
 upstream vendor prefix as a provider. The router uses OpenRouter's public model
-catalog as the primary source of standardized editorial names. Matching is
-exact or by an unambiguous model-ID suffix; OpenRouter never controls model
-availability, routing, permissions, or capabilities. If that catalog is
-unavailable or has no safe match, the provider's display name is used. Every
-managed-model name ends in the configured hosting source, such as
+catalog as the primary source of standardized editorial names and as a dynamic
+fallback for a context length omitted by the configured provider. Matching is
+exact or by an unambiguous model-ID suffix. Provider-returned context metadata
+always takes precedence, and OpenRouter never controls model availability,
+routing, permissions, modalities, tools, or reasoning support. If that catalog
+is unavailable or has no safe match, names and context use provider/ID
+fallbacks. Every managed-model name ends in the configured hosting source,
+such as
 `(OpenRouter)` or `(VokeAPI)`, so the same model remains distinguishable across
 providers. OpenRouter publisher prefixes are removed from `Publisher: Model`;
-direct OpenAI names therefore read like `GPT-5.6 Sol`. Machine-like provider fallbacks are humanized and
-provider marketing-tier suffixes are removed. Descriptions and reasoning
-metadata continue to come from the configured provider.
+direct OpenAI names therefore read like `GPT-5.6 Sol`. Machine-like provider
+fallbacks are humanized and provider marketing-tier suffixes are removed.
+Descriptions and reasoning metadata continue to come from the configured
+provider.
 
 `upstream_model` controls the provider model sent after resolution and defaults
 to the portion of the canonical slug after `provider/`. Optional

@@ -53,6 +53,10 @@ the agent-managed flow, verification, troubleshooting, and cleanup.
   model ID. Publisher prefixes are removed; managed routes append their
   configured hosting source, such as `Model (Provider)`, while direct OpenAI
   models have no redundant suffix. Overrides are not used as a model list.
+- Context windows come from the configured provider when available. If its
+  catalog omits them, the router dynamically fills an exact or unambiguous
+  OpenRouter catalog match; unmatched models retain a conservative fallback.
+  Per-model context limits do not need to be hardcoded in application config.
 - Unknown models and unsupported features fail closed.
 
 See [architecture](docs/architecture.md),

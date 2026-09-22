@@ -9,6 +9,7 @@ import (
 	"github.com/applyinnovations/bifrost-model-router/internal/catalog"
 	"github.com/applyinnovations/bifrost-model-router/internal/config"
 	"github.com/applyinnovations/bifrost-model-router/internal/credentials"
+	"github.com/applyinnovations/bifrost-model-router/internal/editorial"
 	responsescompat "github.com/applyinnovations/bifrost-model-router/internal/responses"
 	"github.com/maximhq/bifrost/core/schemas"
 )
@@ -17,6 +18,8 @@ var state struct {
 	sync.RWMutex
 	config config.Config
 }
+
+var metadataLookup catalog.MetadataLookup = editorial.NewOpenRouterResolver().LookupMetadata
 
 func Init(raw any) error {
 	cfg, err := config.FromAny(raw)
@@ -83,7 +86,7 @@ func HTTPTransportPostHook(_ *schemas.BifrostContext, req *schemas.HTTPRequest, 
 	if !isCodexModelsRequest(req) || resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil
 	}
-	body, err := catalog.Hydrate(resp.Body, currentConfig())
+	body, err := catalog.HydrateWithMetadata(resp.Body, currentConfig(), metadataLookup)
 	if err != nil {
 		return err
 	}

@@ -30,7 +30,7 @@ type Handler struct {
 	bifrostProxy    *httputil.ReverseProxy
 	client          *http.Client
 	chatGPTModelURL string
-	nameLookup      catalog.NameLookup
+	metadataLookup  catalog.MetadataLookup
 }
 
 func New(cfg config.Config, bifrostURL, chatGPTURL string) (*Handler, error) {
@@ -54,7 +54,7 @@ func New(cfg config.Config, bifrostURL, chatGPTURL string) (*Handler, error) {
 		bifrostProxy:    proxy,
 		client:          &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }},
 		chatGPTModelURL: "/backend-api/codex/models",
-		nameLookup:      editorial.NewOpenRouterResolver().Lookup,
+		metadataLookup:  editorial.NewOpenRouterResolver().LookupMetadata,
 	}, nil
 }
 
@@ -151,7 +151,7 @@ func (h *Handler) serveModels(w http.ResponseWriter, req *http.Request) {
 	directBody, directStatus, directErr := h.fetch(req, h.chatGPTURL, h.chatGPTModelURL, true)
 	if directErr != nil || directStatus < 200 || directStatus >= 300 {
 		if bifrostStatus >= 200 && bifrostStatus < 300 {
-			if decorated, decorateErr := catalog.DecorateCatalog(bifrostBody, h.cfg, h.nameLookup); decorateErr == nil {
+			if decorated, decorateErr := catalog.DecorateCatalog(bifrostBody, h.cfg, h.metadataLookup); decorateErr == nil {
 				bifrostBody = decorated
 			}
 		}
@@ -161,7 +161,7 @@ func (h *Handler) serveModels(w http.ResponseWriter, req *http.Request) {
 		_, _ = w.Write(bifrostBody)
 		return
 	}
-	merged, err := mergeCatalogs(directBody, bifrostBody, h.cfg, h.nameLookup)
+	merged, err := mergeCatalogs(directBody, bifrostBody, h.cfg, h.metadataLookup)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "catalog_invalid", "an upstream returned an invalid model catalog")
 		return
@@ -206,7 +206,7 @@ func copyChatGPTHeaders(dst, src http.Header) {
 	}
 }
 
-func mergeCatalogs(direct, bifrost []byte, cfg config.Config, lookup catalog.NameLookup) ([]byte, error) {
+func mergeCatalogs(direct, bifrost []byte, cfg config.Config, lookup catalog.MetadataLookup) ([]byte, error) {
 	var directCatalog map[string]json.RawMessage
 	var bifrostCatalog map[string]json.RawMessage
 	if err := json.Unmarshal(direct, &directCatalog); err != nil {
@@ -274,7 +274,7 @@ func mergeCatalogs(direct, bifrost []byte, cfg config.Config, lookup catalog.Nam
 		if !ok {
 			continue
 		}
-		catalog.DecorateModel(model, resolved, cfg, lookup)
+		catalog.DecorateModelWithMetadata(model, resolved, cfg, lookup)
 		encoded, err := json.Marshal(model)
 		if err != nil {
 			return nil, err

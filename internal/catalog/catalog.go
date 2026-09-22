@@ -13,12 +13,19 @@ type responseEnvelope struct {
 }
 
 type NameLookup func(provider, upstreamModel string) (string, bool)
+type MetadataLookup func(provider, upstreamModel string) (name string, contextWindow int64, ok bool)
 
 func Hydrate(body []byte, cfg config.Config) ([]byte, error) {
-	return HydrateWithNames(body, cfg, nil)
+	return HydrateWithMetadata(body, cfg, nil)
 }
 
 func HydrateWithNames(body []byte, cfg config.Config, lookup NameLookup) ([]byte, error) {
+	return HydrateWithMetadata(body, cfg, metadataFromNames(lookup))
+}
+
+// HydrateWithMetadata preserves provider-returned catalog fields, dynamically
+// fills missing context metadata, and applies display-name enrichment.
+func HydrateWithMetadata(body []byte, cfg config.Config, lookup MetadataLookup) ([]byte, error) {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return nil, fmt.Errorf("decode model catalog: %w", err)
@@ -42,7 +49,7 @@ func HydrateWithNames(body []byte, cfg config.Config, lookup NameLookup) ([]byte
 		if seen[resolved.Slug] {
 			continue
 		}
-		base := HydrateModel(original, resolved, cfg.Instructions)
+		base := HydrateModel(enrichContext(original, resolved, lookup), resolved, cfg.Instructions)
 		out = append(out, base)
 		seen[resolved.Slug] = true
 		if resolved.Variant == nil {
@@ -59,7 +66,7 @@ func HydrateWithNames(body []byte, cfg config.Config, lookup NameLookup) ([]byte
 			// metadata-only and must not be advertised until the upstream lists it.
 			continue
 		}
-		base := HydrateModel(map[string]any{"id": slug}, resolved, cfg.Instructions)
+		base := HydrateModel(enrichContext(map[string]any{"id": slug}, resolved, lookup), resolved, cfg.Instructions)
 		out = append(out, base)
 		seen[slug] = true
 		out = appendConfiguredVariants(out, seen, base, slug, cfg, cfg.Instructions)
@@ -70,7 +77,7 @@ func HydrateWithNames(body []byte, cfg config.Config, lookup NameLookup) ([]byte
 			identity = stringField(model, "id")
 		}
 		if resolved, ok := cfg.ResolveModel(identity); ok {
-			DecorateModel(model, resolved, cfg, lookup)
+			DecorateModelWithMetadata(model, resolved, cfg, lookup)
 		}
 	}
 	encoded, err := json.Marshal(responseEnvelope{Models: out})
@@ -82,7 +89,7 @@ func HydrateWithNames(body []byte, cfg config.Config, lookup NameLookup) ([]byte
 
 // DecorateCatalog applies display-name enrichment to an already hydrated
 // Codex catalog while preserving its envelope and all unknown fields.
-func DecorateCatalog(body []byte, cfg config.Config, lookup NameLookup) ([]byte, error) {
+func DecorateCatalog(body []byte, cfg config.Config, lookup MetadataLookup) ([]byte, error) {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return nil, fmt.Errorf("decode model catalog: %w", err)
@@ -97,7 +104,7 @@ func DecorateCatalog(body []byte, cfg config.Config, lookup NameLookup) ([]byte,
 			identity = stringField(model, "id")
 		}
 		if resolved, ok := cfg.ResolveModel(identity); ok {
-			DecorateModel(model, resolved, cfg, lookup)
+			DecorateModelWithMetadata(model, resolved, cfg, lookup)
 		}
 	}
 	encoded, err := json.Marshal(models)
@@ -110,8 +117,14 @@ func DecorateCatalog(body []byte, cfg config.Config, lookup NameLookup) ([]byte,
 }
 
 // DecorateModel applies editorial naming and a configured-provider suffix.
-// Editorial metadata never affects routing, availability, or capabilities.
 func DecorateModel(model map[string]any, resolved config.ResolvedModel, cfg config.Config, lookup NameLookup) {
+	DecorateModelWithMetadata(model, resolved, cfg, metadataFromNames(lookup))
+}
+
+// DecorateModelWithMetadata applies dynamic naming, fills a missing context
+// window, and adds the configured-provider suffix.
+func DecorateModelWithMetadata(model map[string]any, resolved config.ResolvedModel, cfg config.Config, lookup MetadataLookup) {
+	enrichContext(model, resolved, lookup)
 	providerLabel := cfg.ProviderDisplayName(resolved.Model.Provider)
 	current := strings.TrimSpace(stringField(model, "display_name"))
 	current = stripProviderSuffix(current, providerLabel)
@@ -119,7 +132,7 @@ func DecorateModel(model map[string]any, resolved config.ResolvedModel, cfg conf
 	if override := strings.TrimSpace(resolved.Provider.ModelNameOverrides[resolved.UpstreamModel]); override != "" {
 		name = override
 	} else if lookup != nil {
-		if editorial, ok := lookup(resolved.Model.Provider, resolved.UpstreamModel); ok && strings.TrimSpace(editorial) != "" {
+		if editorial, _, ok := lookup(resolved.Model.Provider, resolved.UpstreamModel); ok && strings.TrimSpace(editorial) != "" {
 			name = normalizeEditorialName(editorial, resolved.UpstreamModel)
 		}
 	}
@@ -139,6 +152,52 @@ func DecorateModel(model map[string]any, resolved config.ResolvedModel, cfg conf
 		name += " (" + providerLabel + ")"
 	}
 	model["display_name"] = name
+}
+
+func metadataFromNames(lookup NameLookup) MetadataLookup {
+	if lookup == nil {
+		return nil
+	}
+	return func(provider, upstreamModel string) (string, int64, bool) {
+		name, ok := lookup(provider, upstreamModel)
+		return name, 0, ok
+	}
+}
+
+func enrichContext(model map[string]any, resolved config.ResolvedModel, lookup MetadataLookup) map[string]any {
+	if positiveInteger(model["context_window"]) > 0 || lookup == nil {
+		return model
+	}
+	window := positiveInteger(model["max_context_window"])
+	if window == 0 {
+		_, window, _ = lookup(resolved.Model.Provider, resolved.UpstreamModel)
+	}
+	if window <= 0 {
+		return model
+	}
+	model["context_window"] = window
+	if _, exists := model["max_context_window"]; !exists {
+		model["max_context_window"] = window
+	}
+	return model
+}
+
+func positiveInteger(value any) int64 {
+	switch number := value.(type) {
+	case float64:
+		if number > 0 && number == float64(int64(number)) {
+			return int64(number)
+		}
+	case int64:
+		if number > 0 {
+			return number
+		}
+	case int:
+		if number > 0 {
+			return int64(number)
+		}
+	}
+	return 0
 }
 
 func stripProviderSuffix(name, providerLabel string) string {

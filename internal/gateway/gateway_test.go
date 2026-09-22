@@ -107,13 +107,17 @@ func TestModelsPreserveDirectMetadataAndAppendManagedModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler.nameLookup = func(provider, upstream string) (string, bool) {
+	handler.metadataLookup = func(provider, upstream string) (string, int64, bool) {
 		names := map[string]string{
 			"openai/sol":         "OpenAI: Sol",
 			"managed/text-model": "Publisher: Text Model",
 		}
 		name, ok := names[provider+"/"+upstream]
-		return name, ok
+		context := int64(0)
+		if provider == "managed" && upstream == "text-model" {
+			context = 1000000
+		}
+		return name, context, ok
 	}
 	req := httptest.NewRequest(http.MethodGet, "/v1/models?client_version=test", nil)
 	req.Header.Set("Authorization", "Bearer test")
@@ -134,7 +138,7 @@ func TestModelsPreserveDirectMetadataAndAppendManagedModels(t *testing.T) {
 	if err := json.Unmarshal(resp.Body.Bytes(), &catalog); err != nil {
 		t.Fatal(err)
 	}
-	if len(catalog.Models) != 3 || catalog.Models[0].Slug != "sol" || catalog.Models[0].DisplayName != "Sol" || catalog.Models[0].ContextWindow != 872000 || catalog.Models[1].Slug != "sol-872k" || catalog.Models[1].DisplayName != "Sol (872K)" || catalog.Models[2].Slug != "managed/text-model" || catalog.Models[2].DisplayName != "Text Model (Managed)" || catalog.RecommendedModel != "sol" {
+	if len(catalog.Models) != 3 || catalog.Models[0].Slug != "sol" || catalog.Models[0].DisplayName != "Sol" || catalog.Models[0].ContextWindow != 872000 || catalog.Models[1].Slug != "sol-872k" || catalog.Models[1].DisplayName != "Sol (872K)" || catalog.Models[2].Slug != "managed/text-model" || catalog.Models[2].DisplayName != "Text Model (Managed)" || catalog.Models[2].ContextWindow != 1000000 || catalog.RecommendedModel != "sol" {
 		t.Fatalf("merged catalog = %#v", catalog)
 	}
 }
@@ -152,8 +156,8 @@ func TestModelsEditorializesManagedFallbackWhenDirectCatalogFails(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler.nameLookup = func(provider, upstream string) (string, bool) {
-		return "Publisher: Text Model", provider == "managed" && upstream == "text-model"
+	handler.metadataLookup = func(provider, upstream string) (string, int64, bool) {
+		return "Publisher: Text Model", 1000000, provider == "managed" && upstream == "text-model"
 	}
 	req := httptest.NewRequest(http.MethodGet, "/v1/models?client_version=test", nil)
 	req.Header.Set("x-bf-vk", "sk-bf-test")
