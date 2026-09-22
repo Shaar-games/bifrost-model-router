@@ -15,9 +15,10 @@ to know the configuration format or provide a complete specification up front:
 Codex reads [AGENTS.md](AGENTS.md) and gathers the requirements with you. It
 asks which provider plans or API accounts you want in Codex, researches their
 current endpoints and account-visible models, explains compatibility limits,
-and uses authenticated model discovery when it reflects that account. You can
-name one or many Bifrost-native or OpenAI-compatible providers; other protocols
-may need an adapter.
+and asks whether each provider should show every discovered model or only a
+model/family allowlist. It uses authenticated model discovery when it reflects
+that account. You can name one or many Bifrost-native or OpenAI-compatible
+providers; other protocols may need an adapter.
 
 OpenAI through the existing Codex login is always retained. Codex detects and
 merges an existing router setup automatically, and defaults new threads to
@@ -44,7 +45,9 @@ the agent-managed flow, verification, troubleshooting, and cleanup.
   credentials managed by Bifrost.
 - Account-aware provider catalogs are discovered dynamically. New upstream
   models flow through without editing a static router model list. An optional
-  virtual-key allowlist can deliberately limit what a user sees.
+  virtual-key allowlist can deliberately limit what a user sees: `"*"` admits
+  all current and future discovered models, exact IDs pin a fixed selection,
+  and validated `regex:` entries admit matching model families over time.
 - Except for explicit exception overrides, model labels prefer OpenRouter
   editorial names, then the upstream display name, then a readable form of the
   model ID. Publisher prefixes are removed; managed routes append their

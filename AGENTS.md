@@ -15,6 +15,9 @@ catalogs, or Codex provider configuration.
   in Codex. Support any Bifrost-native or OpenAI-compatible provider without
   advertising, recommending, or implying affiliation with specific downstream
   companies.
+- After authenticated discovery, ask whether each provider should expose all
+  available models or a model/family allowlist. Do not make users enumerate
+  models before showing them what their account can access.
 - Always retain OpenAI through the user's Codex login. This is an invariant,
   not a requirements question.
 - Inspect `~/.config/bifrost-model-router`, the managed Codex block, and the
@@ -55,16 +58,26 @@ For each requested provider, determine:
 7. Existing local router state that must be merged and preserved.
 8. The model permissions of the exact virtual key installed in Codex.
 
-Default to every model returned by authenticated, account-aware discovery. Do
-not ask every user to curate a model list. If the user says the model picker is
-too large or asks for a subset, discover the available models first, then ask
-which exact models or model families they want visible.
+After authenticated, account-aware discovery, summarize the available models
+and ask whether to expose all of them or only a subset. If the user wants a
+subset, ask which exact models or model families should be visible. Do not ask
+them to curate IDs before discovery, and do not silently expose everything
+without confirming that choice.
 
 Use current official provider documentation as the primary source. Use an
 authenticated model-list endpoint when it is account-aware. If discovery is
 global rather than plan-aware, intersect it with plan documentation. When
 availability remains uncertain, perform a minimal model request after warning
 that it may consume a small amount of plan quota.
+
+Resolve context windows and other capability metadata independently from model
+availability. Prefer fields returned by the configured provider. When its
+model endpoint omits them, use current official documentation for that exact
+provider/model combination and add explicit router metadata overrides while
+leaving discovery enabled. Retain conservative defaults only for models whose
+limits remain unverified. Never raise a provider-wide context default merely
+because most of its models are larger, and never use OpenRouter context data
+to override a provider-specific limit.
 
 Never invent model IDs, context windows, plan entitlements, or capabilities.
 For an OpenAI-compatible provider with unverified richer capabilities, use the
