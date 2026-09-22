@@ -255,7 +255,7 @@ func TestHydratePrefersEditorialNameAndUsesConfiguredProviderLabel(t *testing.T)
 	if err := json.Unmarshal(out, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if got := modelBySlug(decoded.Models, "other/new-model")["display_name"]; got != "Publisher New Model (Paid Plan)" {
+	if got := modelBySlug(decoded.Models, "other/new-model")["display_name"]; got != "New Model (Paid Plan)" {
 		t.Fatalf("display_name = %q", got)
 	}
 }
@@ -276,7 +276,7 @@ func TestDecorateCatalogPreservesEnvelopeAndUsesEditorialName(t *testing.T) {
 	if err := json.Unmarshal(out, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if decoded.RecommendedModel != "other/b" || modelBySlug(decoded.Models, "other/b")["display_name"] != "Publisher Better Name (Other)" {
+	if decoded.RecommendedModel != "other/b" || modelBySlug(decoded.Models, "other/b")["display_name"] != "Better Name (Other)" {
 		t.Fatalf("decorated catalog = %s", out)
 	}
 }
@@ -311,7 +311,7 @@ func TestDecorateModelOmitsDirectOpenAISource(t *testing.T) {
 	DecorateModel(model, resolved, cfg, func(_, _ string) (string, bool) {
 		return "OpenAI: GPT-5.6 Sol", true
 	})
-	if got := model["display_name"]; got != "OpenAI GPT-5.6 Sol" {
+	if got := model["display_name"]; got != "GPT-5.6 Sol" {
 		t.Fatalf("display_name = %q", got)
 	}
 }

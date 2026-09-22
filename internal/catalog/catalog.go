@@ -159,7 +159,7 @@ func normalizeEditorialName(name, upstreamModel string) string {
 	if strings.EqualFold(modelName, modelLeaf(upstreamModel)) {
 		modelName = humanizeModelID(modelName)
 	}
-	return strings.TrimSpace(publisher) + " " + modelName
+	return modelName
 }
 
 func readableProviderName(name, upstreamModel string) string {

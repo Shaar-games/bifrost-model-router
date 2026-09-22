@@ -46,9 +46,8 @@ availability, routing, permissions, or capabilities. If that catalog is
 unavailable or has no safe match, the provider's display name is used. Every
 managed-model name ends in the configured hosting source, such as
 `(OpenRouter)` or `(VokeAPI)`, so the same model remains distinguishable across
-providers. OpenRouter publisher prefixes are normalized from `Publisher: Model`
-to `Publisher Model`; direct OpenAI names therefore read like
-`OpenAI GPT-5.6 Sol`. Machine-like provider fallbacks are humanized and
+providers. OpenRouter publisher prefixes are removed from `Publisher: Model`;
+direct OpenAI names therefore read like `GPT-5.6 Sol`. Machine-like provider fallbacks are humanized and
 provider marketing-tier suffixes are removed. Descriptions and reasoning
 metadata continue to come from the configured provider.
 

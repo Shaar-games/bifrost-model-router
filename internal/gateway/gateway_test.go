@@ -134,7 +134,7 @@ func TestModelsPreserveDirectMetadataAndAppendManagedModels(t *testing.T) {
 	if err := json.Unmarshal(resp.Body.Bytes(), &catalog); err != nil {
 		t.Fatal(err)
 	}
-	if len(catalog.Models) != 3 || catalog.Models[0].Slug != "sol" || catalog.Models[0].DisplayName != "OpenAI Sol" || catalog.Models[0].ContextWindow != 872000 || catalog.Models[1].Slug != "sol-872k" || catalog.Models[1].DisplayName != "OpenAI Sol (872K)" || catalog.Models[2].Slug != "managed/text-model" || catalog.Models[2].DisplayName != "Publisher Text Model (Managed)" || catalog.RecommendedModel != "sol" {
+	if len(catalog.Models) != 3 || catalog.Models[0].Slug != "sol" || catalog.Models[0].DisplayName != "Sol" || catalog.Models[0].ContextWindow != 872000 || catalog.Models[1].Slug != "sol-872k" || catalog.Models[1].DisplayName != "Sol (872K)" || catalog.Models[2].Slug != "managed/text-model" || catalog.Models[2].DisplayName != "Text Model (Managed)" || catalog.RecommendedModel != "sol" {
 		t.Fatalf("merged catalog = %#v", catalog)
 	}
 }
@@ -159,7 +159,7 @@ func TestModelsEditorializesManagedFallbackWhenDirectCatalogFails(t *testing.T) 
 	req.Header.Set("x-bf-vk", "sk-bf-test")
 	resp := httptest.NewRecorder()
 	handler.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK || !strings.Contains(resp.Body.String(), `"display_name":"Publisher Text Model (Managed)"`) {
+	if resp.Code != http.StatusOK || !strings.Contains(resp.Body.String(), `"display_name":"Text Model (Managed)"`) {
 		t.Fatalf("status = %d body = %s", resp.Code, resp.Body.String())
 	}
 }
