@@ -113,19 +113,21 @@ func DecorateCatalog(body []byte, cfg config.Config, lookup NameLookup) ([]byte,
 // Editorial metadata never affects routing, availability, or capabilities.
 func DecorateModel(model map[string]any, resolved config.ResolvedModel, cfg config.Config, lookup NameLookup) {
 	providerLabel := cfg.ProviderDisplayName(resolved.Model.Provider)
-	suffix := " [" + providerLabel + "]"
 	current := strings.TrimSpace(stringField(model, "display_name"))
-	current = strings.TrimSpace(strings.TrimSuffix(current, suffix))
+	current = stripProviderSuffix(current, providerLabel)
 	name := current
 	if override := strings.TrimSpace(resolved.Provider.ModelNameOverrides[resolved.UpstreamModel]); override != "" {
 		name = override
 	} else if lookup != nil {
 		if editorial, ok := lookup(resolved.Model.Provider, resolved.UpstreamModel); ok && strings.TrimSpace(editorial) != "" {
-			name = strings.TrimSpace(editorial)
+			name = normalizeEditorialName(editorial, resolved.UpstreamModel)
 		}
 	}
 	if name == "" {
-		name = resolved.Slug
+		name = resolved.UpstreamModel
+	}
+	if name == current {
+		name = readableProviderName(name, resolved.UpstreamModel)
 	}
 	if resolved.Variant != nil {
 		variantSuffix := " (" + contextLabel(resolved.Variant.ContextWindow) + ")"
@@ -133,7 +135,105 @@ func DecorateModel(model map[string]any, resolved config.ResolvedModel, cfg conf
 			name += variantSuffix
 		}
 	}
-	model["display_name"] = name + suffix
+	if resolved.Model.Provider != "openai" {
+		name += " (" + providerLabel + ")"
+	}
+	model["display_name"] = name
+}
+
+func stripProviderSuffix(name, providerLabel string) string {
+	name = strings.TrimSpace(name)
+	for _, suffix := range []string{" [" + providerLabel + "]", " (" + providerLabel + ")"} {
+		name = strings.TrimSpace(strings.TrimSuffix(name, suffix))
+	}
+	return name
+}
+
+func normalizeEditorialName(name, upstreamModel string) string {
+	name = strings.TrimSpace(name)
+	publisher, modelName, found := strings.Cut(name, ":")
+	if !found || strings.TrimSpace(publisher) == "" || strings.TrimSpace(modelName) == "" {
+		return readableProviderName(name, upstreamModel)
+	}
+	modelName = strings.TrimSpace(modelName)
+	if strings.EqualFold(modelName, modelLeaf(upstreamModel)) {
+		modelName = humanizeModelID(modelName)
+	}
+	return strings.TrimSpace(publisher) + " " + modelName
+}
+
+func readableProviderName(name, upstreamModel string) string {
+	name = strings.TrimSpace(name)
+	for _, tier := range []string{"fast", "frontier", "flagship", "open-weights"} {
+		suffix := " (" + tier + ")"
+		if strings.HasSuffix(strings.ToLower(name), suffix) {
+			name = strings.TrimSpace(name[:len(name)-len(suffix)])
+			break
+		}
+	}
+	if strings.EqualFold(name, upstreamModel) || strings.EqualFold(name, modelLeaf(upstreamModel)) || name == "" {
+		return humanizeModelID(modelLeaf(upstreamModel))
+	}
+	return name
+}
+
+func modelLeaf(model string) string {
+	if slash := strings.LastIndexByte(model, '/'); slash >= 0 {
+		return model[slash+1:]
+	}
+	return model
+}
+
+func humanizeModelID(model string) string {
+	parts := strings.FieldsFunc(model, func(r rune) bool { return r == '-' || r == '_' || r == '/' })
+	out := make([]string, 0, len(parts))
+	for i := 0; i < len(parts); i++ {
+		part := parts[i]
+		if strings.EqualFold(part, "non") && i+1 < len(parts) {
+			out = append(out, "Non-"+humanizeToken(parts[i+1]))
+			i++
+			continue
+		}
+		out = append(out, humanizeToken(part))
+	}
+	return strings.Join(out, " ")
+}
+
+func humanizeToken(token string) string {
+	lower := strings.ToLower(token)
+	brands := map[string]string{
+		"ai": "AI", "api": "API", "deepseek": "DeepSeek", "gemini": "Gemini",
+		"glm": "GLM", "gpt": "GPT", "grok": "Grok", "hy3": "Hy3",
+		"kimi": "Kimi", "mimo": "MiMo", "minimax": "MiniMax", "oss": "OSS",
+	}
+	if brand := brands[lower]; brand != "" {
+		return brand
+	}
+	if len(lower) > 1 {
+		last := lower[len(lower)-1]
+		if last == 'b' || last == 'm' || last == 'k' {
+			prefix := lower[:len(lower)-1]
+			allAlphaNumeric := true
+			for _, r := range prefix {
+				if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '.' {
+					allAlphaNumeric = false
+					break
+				}
+			}
+			if allAlphaNumeric {
+				return strings.ToUpper(prefix[:1]) + prefix[1:] + strings.ToUpper(string(last))
+			}
+		}
+	}
+	if len(lower) > 1 && lower[0] == 'v' && lower[1] >= '0' && lower[1] <= '9' {
+		return "V" + lower[1:]
+	}
+	runes := []rune(lower)
+	if len(runes) == 0 {
+		return ""
+	}
+	runes[0] = []rune(strings.ToUpper(string(runes[0])))[0]
+	return string(runes)
 }
 
 func decodeModels(raw map[string]json.RawMessage) ([]map[string]any, error) {

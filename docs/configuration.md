@@ -8,8 +8,9 @@ concept.
 
 Provider fields:
 
-- `display_name`: optional readable source label appended to every model as
-  `[Provider]`. When omitted, the provider key is humanized.
+- `display_name`: optional readable hosting-source label appended to managed
+  models as `(Provider)`. When omitted, the provider key is humanized. Direct
+  OpenAI models omit the redundant source suffix.
 - `credential_mode`: `request_passthrough` only for the exact `openai`
   provider, otherwise `bifrost`.
 - `responses_mode`: `native`, `chat_polyfill`, or `unsupported`.
@@ -43,8 +44,12 @@ catalog as the primary source of standardized editorial names. Matching is
 exact or by an unambiguous model-ID suffix; OpenRouter never controls model
 availability, routing, permissions, or capabilities. If that catalog is
 unavailable or has no safe match, the provider's display name is used. Every
-name ends in the configured source label, such as `[Managed]`, so the same
-model remains distinguishable across providers. Descriptions and reasoning
+managed-model name ends in the configured hosting source, such as
+`(OpenRouter)` or `(VokeAPI)`, so the same model remains distinguishable across
+providers. OpenRouter publisher prefixes are normalized from `Publisher: Model`
+to `Publisher Model`; direct OpenAI names therefore read like
+`OpenAI GPT-5.6 Sol`. Machine-like provider fallbacks are humanized and
+provider marketing-tier suffixes are removed. Descriptions and reasoning
 metadata continue to come from the configured provider.
 
 `upstream_model` controls the provider model sent after resolution and defaults

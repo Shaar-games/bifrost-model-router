@@ -109,7 +109,7 @@ func TestHydrateFlowsThroughDiscoveredModelsAndHidesAbsentOverrides(t *testing.T
 	for _, model := range decoded.Models {
 		switch model["slug"] {
 		case "other/new-model":
-			foundNew = model["display_name"] == "New Model [Other]" && model["context_window"] == float64(64000) && model["future"] != nil
+			foundNew = model["display_name"] == "New Model (Other)" && model["context_window"] == float64(64000) && model["future"] != nil
 		case "other/b":
 			foundAbsentOverride = true
 		}
@@ -137,7 +137,7 @@ func TestHydrateMapsBifrostNameToCodexDisplayName(t *testing.T) {
 	if err := json.Unmarshal(out, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if modelBySlug(decoded.Models, "other/new-model")["display_name"] != "New Model (fast) [Other]" {
+	if modelBySlug(decoded.Models, "other/new-model")["display_name"] != "New Model (Other)" {
 		t.Fatalf("hydrated model = %s", out)
 	}
 }
@@ -160,7 +160,7 @@ func TestHydratePrefersCodexDisplayNameOverBifrostName(t *testing.T) {
 	if err := json.Unmarshal(out, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if modelBySlug(decoded.Models, "other/new-model")["display_name"] != "Codex Name [Other]" {
+	if modelBySlug(decoded.Models, "other/new-model")["display_name"] != "Codex Name (Other)" {
 		t.Fatalf("hydrated model = %s", out)
 	}
 }
@@ -193,7 +193,7 @@ func TestHydrateCanonicalizesDiscoveredIDAndAppliesNameOverride(t *testing.T) {
 	if err := json.Unmarshal(out, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if len(decoded.Models) < 1 || decoded.Models[0]["id"] != "other/vendor/reasoner" || decoded.Models[0]["slug"] != "other/vendor/reasoner" || decoded.Models[0]["display_name"] != "Reasoner Pro [Other]" {
+	if len(decoded.Models) < 1 || decoded.Models[0]["id"] != "other/vendor/reasoner" || decoded.Models[0]["slug"] != "other/vendor/reasoner" || decoded.Models[0]["display_name"] != "Reasoner Pro (Other)" {
 		t.Fatalf("hydrated model = %s", out)
 	}
 }
@@ -225,7 +225,7 @@ func TestHydratePreservesUpstreamContextAndGeneratesAdjacentVariant(t *testing.T
 	if base["context_window"] != float64(272000) || base["max_context_window"] != float64(872000) || base["effective_context_window_percent"] != float64(80) || base["supports_experimental_context"] != true || base["future"] == nil {
 		t.Fatalf("base metadata was overwritten: %#v", base)
 	}
-	if variant["slug"] != "a-872k" || variant["display_name"] != "Upstream A (872K) [OpenAI]" || variant["context_window"] != float64(872000) || variant["max_context_window"] != float64(872000) || variant["effective_context_window_percent"] != float64(95) {
+	if variant["slug"] != "a-872k" || variant["display_name"] != "Upstream A (872K)" || variant["context_window"] != float64(872000) || variant["max_context_window"] != float64(872000) || variant["effective_context_window_percent"] != float64(95) {
 		t.Fatalf("variant = %#v", variant)
 	}
 }
@@ -255,7 +255,7 @@ func TestHydratePrefersEditorialNameAndUsesConfiguredProviderLabel(t *testing.T)
 	if err := json.Unmarshal(out, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if got := modelBySlug(decoded.Models, "other/new-model")["display_name"]; got != "Publisher: New Model [Paid Plan]" {
+	if got := modelBySlug(decoded.Models, "other/new-model")["display_name"]; got != "Publisher New Model (Paid Plan)" {
 		t.Fatalf("display_name = %q", got)
 	}
 }
@@ -276,7 +276,42 @@ func TestDecorateCatalogPreservesEnvelopeAndUsesEditorialName(t *testing.T) {
 	if err := json.Unmarshal(out, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if decoded.RecommendedModel != "other/b" || modelBySlug(decoded.Models, "other/b")["display_name"] != "Publisher: Better Name [Other]" {
+	if decoded.RecommendedModel != "other/b" || modelBySlug(decoded.Models, "other/b")["display_name"] != "Publisher Better Name (Other)" {
 		t.Fatalf("decorated catalog = %s", out)
+	}
+}
+
+func TestDecorateModelHumanizesProviderFallbackAndSource(t *testing.T) {
+	cfg := testConfig(t)
+	provider := cfg.Providers["other"]
+	provider.DisplayName = "VokeAPI"
+	provider.DiscoverModels = true
+	cfg.Providers["other"] = provider
+	if err := cfg.ApplyDefaultsAndValidate(); err != nil {
+		t.Fatal(err)
+	}
+	resolved, ok := cfg.ResolveModel("other/grok-4.20-0309-non-reasoning")
+	if !ok {
+		t.Fatal("model did not resolve")
+	}
+	model := map[string]any{"display_name": "grok-4.20-0309-non-reasoning (fast) [VokeAPI]"}
+	DecorateModel(model, resolved, cfg, nil)
+	if got := model["display_name"]; got != "Grok 4.20 0309 Non-Reasoning (VokeAPI)" {
+		t.Fatalf("display_name = %q", got)
+	}
+}
+
+func TestDecorateModelOmitsDirectOpenAISource(t *testing.T) {
+	cfg := testConfig(t)
+	resolved, ok := cfg.ResolveModel("openai/a")
+	if !ok {
+		t.Fatal("model did not resolve")
+	}
+	model := map[string]any{"display_name": "stale [OpenAI]"}
+	DecorateModel(model, resolved, cfg, func(_, _ string) (string, bool) {
+		return "OpenAI: GPT-5.6 Sol", true
+	})
+	if got := model["display_name"]; got != "OpenAI GPT-5.6 Sol" {
+		t.Fatalf("display_name = %q", got)
 	}
 }

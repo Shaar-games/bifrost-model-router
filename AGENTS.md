@@ -141,10 +141,13 @@ exact or unambiguous model-ID match exists. This lookup is naming metadata
 only: never use it to infer account availability, routing, permissions,
 capabilities, context windows, or reasoning support. Fall back to the
 configured provider's `display_name`, then derive a readable model-ID label or
-add exact `model_name_overrides` for exceptions. Append the configured provider
-source in brackets to every Codex label so duplicate models remain
-distinguishable across plans. Do not replace dynamic discovery with a static
-catalog merely to improve labels. Preserve upstream reasoning-level metadata.
+add exact `model_name_overrides` for exceptions. Normalize editorial publisher
+prefixes to `Publisher Model`. Append the configured hosting source in
+parentheses to managed models so duplicate models remain distinguishable
+across plans, for example `Publisher Model (VokeAPI)`. Omit the redundant
+suffix for direct OpenAI models. Do not replace dynamic discovery with a
+static catalog merely to improve labels. Preserve upstream reasoning-level
+metadata.
 
 To offer an optional managed-provider model allowlist without restoring a
 static router catalog:
