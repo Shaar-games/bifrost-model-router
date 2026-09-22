@@ -160,6 +160,47 @@ func TestPreLLMSelectsPolyfillForDiscoveredModel(t *testing.T) {
 	}
 }
 
+func TestPreLLMSelectsPolyfillForDiscoveredModelWithNestedUpstreamID(t *testing.T) {
+	initTestPlugin(t)
+	ctx := schemas.NewBifrostContext(context.Background(), time.Now().Add(time.Minute))
+	defer ctx.Cancel()
+	req := &schemas.BifrostRequest{RequestType: schemas.ResponsesRequest, ResponsesRequest: &schemas.BifrostResponsesRequest{Provider: "other", Model: "vendor/reasoner"}}
+	got, short, err := PreLLMHook(ctx, req)
+	if err != nil || short != nil {
+		t.Fatalf("short=%v err=%v", short, err)
+	}
+	provider, model, _ := got.GetRequestFields()
+	if provider != "other" || model != "vendor/reasoner" {
+		t.Fatalf("resolved request = provider %q, model %q", provider, model)
+	}
+	if got.RequestType != schemas.ResponsesRequest {
+		t.Fatalf("request type = %q", got.RequestType)
+	}
+	if got.ResponsesRequest == nil {
+		t.Fatal("responses request is nil")
+	}
+	if got.ResponsesRequest.Provider != "other" || got.ResponsesRequest.Model != "vendor/reasoner" {
+		t.Fatalf("upstream request = provider %q, model %q", got.ResponsesRequest.Provider, got.ResponsesRequest.Model)
+	}
+	if changed, _ := ctx.Value(schemas.BifrostContextKeyChangeRequestType).(schemas.RequestType); changed != schemas.ChatCompletionRequest {
+		t.Fatalf("change request type = %q", changed)
+	}
+}
+
+func TestPreLLMRejectsUnconfiguredSeparatedProvider(t *testing.T) {
+	initTestPlugin(t)
+	ctx := schemas.NewBifrostContext(context.Background(), time.Now().Add(time.Minute))
+	defer ctx.Cancel()
+	req := &schemas.BifrostRequest{RequestType: schemas.ResponsesRequest, ResponsesRequest: &schemas.BifrostResponsesRequest{Provider: "unconfigured", Model: "other/new-model"}}
+	_, short, err := PreLLMHook(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if short == nil || short.Error == nil || short.Error.StatusCode == nil || *short.Error.StatusCode != 400 {
+		t.Fatalf("short circuit = %#v", short)
+	}
+}
+
 func TestPostHookHydratesCodexCatalog(t *testing.T) {
 	initTestPlugin(t)
 	originalLookup := metadataLookup

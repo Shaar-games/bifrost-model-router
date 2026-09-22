@@ -110,7 +110,7 @@ models:
 	}
 }
 
-func TestDiscoveredModelWithNestedUpstreamIDResolvesFromNameOverride(t *testing.T) {
+func TestDiscoveredModelWithNestedUpstreamIDRequiresCanonicalProvider(t *testing.T) {
 	cfg, err := Decode(strings.NewReader(`
 version: 1
 providers:
@@ -127,7 +127,10 @@ models:
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolved, ok := cfg.ResolveModel("vendor/reasoner")
+	if _, ok := cfg.ResolveModel("vendor/reasoner"); ok {
+		t.Fatal("display-name override inferred routing ownership")
+	}
+	resolved, ok := cfg.ResolveModel("managed/vendor/reasoner")
 	if !ok || resolved.Slug != "managed/vendor/reasoner" || resolved.UpstreamModel != "vendor/reasoner" || resolved.Model.Provider != "managed" {
 		t.Fatalf("nested discovered model = %#v, %v", resolved, ok)
 	}

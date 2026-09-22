@@ -107,16 +107,20 @@ func PreLLMHook(ctx *schemas.BifrostContext, req *schemas.BifrostRequest) (*sche
 	}
 	provider, model, _ := req.GetRequestFields()
 	identity := model
-	if provider != "" && !strings.Contains(model, "/") {
+	cfg := currentConfig()
+	if provider != "" {
+		if _, configured := cfg.Providers[string(provider)]; !configured {
+			return req, shortCircuit(400, "unresolved_model", "model provider is not present in the router configuration"), nil
+		}
 		identity = string(provider) + "/" + model
 	}
-	resolved, ok := currentConfig().ResolveModel(identity)
+	resolved, ok := cfg.ResolveModel(identity)
 	if !ok {
 		return req, shortCircuit(400, "unresolved_model", "model is not present in the router catalog"), nil
 	}
-	// Resolve aliases and cached bare upstream IDs before Bifrost dispatches.
-	// In particular, upstream IDs containing a slash must retain the configured
-	// provider rather than treating their first path component as a provider.
+	// Bifrost separates the configured provider from the complete upstream model
+	// ID. Reconstruct the canonical router slug before resolving it; nested model
+	// IDs must retain every upstream path component.
 	req.SetProvider(schemas.ModelProvider(resolved.Model.Provider))
 	req.SetModel(resolved.UpstreamModel)
 	switch resolved.Model.ResponsesMode {
