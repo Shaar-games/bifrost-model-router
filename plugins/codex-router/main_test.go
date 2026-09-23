@@ -54,6 +54,39 @@ func TestPreAuthHostedToolFallsBackWithForwardedOpenAIAuth(t *testing.T) {
 	}
 }
 
+func TestPreAuthHostedToolUsesDefaultFallbackWhenUnset(t *testing.T) {
+	err := Init(map[string]any{
+		"version": 1,
+		"providers": map[string]any{
+			"openai": map[string]any{"credential_mode": "request_passthrough", "responses_mode": "native", "discover_models": true},
+			"other":  map[string]any{"credential_mode": "bifrost", "responses_mode": "chat_polyfill", "discover_models": true},
+		},
+		"models": map[string]any{
+			"openai/gpt-5.6-sol": map[string]any{"codex": map[string]any{}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := &schemas.HTTPRequest{Method: "POST", Path: "/v1/responses", Headers: map[string]string{
+		"Authorization": "Bearer openai-canary",
+		"x-bf-vk":       "sk-bf-canary",
+	}, Body: []byte(`{"model":"other/new-model","input":"hello","tools":[{"type":"web_search"}]}`)}
+	resp, err := HTTPTransportPreAuthHook(nil, req)
+	if err != nil || resp != nil {
+		t.Fatalf("resp=%v err=%v", resp, err)
+	}
+	var envelope struct {
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal(req.Body, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.Model != "openai/gpt-6-luna" || req.Headers["x-bf-direct-key"] != "true" {
+		t.Fatalf("fallback model = %q, direct key = %q", envelope.Model, req.Headers["x-bf-direct-key"])
+	}
+}
+
 func TestPreAuthNamespaceStaysOnManagedProvider(t *testing.T) {
 	initTestPlugin(t)
 	body := []byte(`{"model":"other/b","input":"hello","tools":[{"type":"namespace","name":"codex","tools":[{"type":"function","name":"shell"}]}]}`)

@@ -32,6 +32,58 @@ models:
 	}
 }
 
+func TestHostedToolFallbackDefaultsToDiscoverableOpenAILuna(t *testing.T) {
+	cfg, err := Decode(strings.NewReader(`
+version: 1
+providers:
+  openai: {credential_mode: request_passthrough, responses_mode: native, discover_models: true}
+  managed: {credential_mode: bifrost, responses_mode: chat_polyfill, discover_models: true}
+models:
+  openai/gpt-5.6-sol: {codex: {}}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.HostedToolFallbackModel != DefaultHostedToolFallbackModel {
+		t.Fatalf("fallback = %q", cfg.HostedToolFallbackModel)
+	}
+}
+
+func TestExplicitHostedToolFallbackTakesPrecedence(t *testing.T) {
+	cfg, err := Decode(strings.NewReader(`
+version: 1
+hosted_tool_fallback_model: openai/gpt-5.6-sol
+providers:
+  openai: {credential_mode: request_passthrough, responses_mode: native, discover_models: true}
+  managed: {credential_mode: bifrost, responses_mode: chat_polyfill, discover_models: true}
+models:
+  openai/gpt-5.6-sol: {codex: {}}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.HostedToolFallbackModel != "openai/gpt-5.6-sol" {
+		t.Fatalf("fallback = %q", cfg.HostedToolFallbackModel)
+	}
+}
+
+func TestHostedToolFallbackDoesNotInventStaticModel(t *testing.T) {
+	cfg, err := Decode(strings.NewReader(`
+version: 1
+providers:
+  openai: {credential_mode: request_passthrough, responses_mode: native}
+  managed: {credential_mode: bifrost, responses_mode: chat_polyfill, discover_models: true}
+models:
+  openai/gpt-5.6-sol: {codex: {}}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.HostedToolFallbackModel != "" {
+		t.Fatalf("unlisted static fallback = %q", cfg.HostedToolFallbackModel)
+	}
+}
+
 func TestContextVariantsResolveDeterministically(t *testing.T) {
 	cfg, err := Decode(strings.NewReader(`
 version: 1

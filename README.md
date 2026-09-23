@@ -43,6 +43,9 @@ the agent-managed flow, verification, troubleshooting, and cleanup.
 - `chat_polyfill` models use Bifrost's Responses-to-Chat translation.
 - OpenAI requests use the caller's Codex authentication; other providers use
   credentials managed by Bifrost.
+- Hosted tools on polyfilled models reroute the whole request to an OpenAI
+  Responses model. The fallback defaults to `openai/gpt-6-luna` when available
+  through the configured OpenAI passthrough; it can be overridden.
 - Account-aware provider catalogs are discovered dynamically. New upstream
   models flow through without editing a static router model list. An optional
   virtual-key allowlist can deliberately limit what a user sees: `"*"` admits

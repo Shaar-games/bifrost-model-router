@@ -11,7 +11,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const CurrentVersion = 1
+const (
+	CurrentVersion                 = 1
+	DefaultHostedToolFallbackModel = "openai/gpt-6-luna"
+)
 
 type CredentialMode string
 
@@ -238,6 +241,14 @@ func (c *Config) ApplyDefaultsAndValidate() error {
 		c.Models[slug] = model
 	}
 	c.buildResolutionIndex()
+	if c.HostedToolFallbackModel == "" {
+		if fallback, ok := c.ResolveModel(DefaultHostedToolFallbackModel); ok &&
+			fallback.Slug == DefaultHostedToolFallbackModel &&
+			fallback.Provider.CredentialMode == CredentialRequestPassthrough &&
+			fallback.Model.ResponsesMode == ResponsesNative {
+			c.HostedToolFallbackModel = DefaultHostedToolFallbackModel
+		}
+	}
 
 	if c.HostedToolFallbackModel != "" {
 		fallback, ok := c.ResolveModel(c.HostedToolFallbackModel)
