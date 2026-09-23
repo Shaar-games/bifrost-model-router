@@ -217,6 +217,19 @@ native Responses and model listing when unsupported, and select a router
 Keep the exact `openai` router provider reserved for Codex request passthrough.
 Never forward the Codex OpenAI bearer to a managed provider.
 
+When any configured model uses `chat_polyfill`, set
+`plugins[].config.hosted_tool_fallback_model` to a verified native Responses
+model on the `openai` request-passthrough provider. Use the selected OpenAI
+default model when available. This sends the whole request through Codex's
+OpenAI login if Codex includes a hosted tool such as `web_search`; the managed
+provider cannot execute that tool through Chat Completions. Explain that this
+one request uses the fallback model and may consume OpenAI plan quota. Validate
+the fallback target during setup. Verify routing without spending provider
+quota by sending a managed-model `web_search` request with the installed virtual
+key but no OpenAI bearer token; the expected result is `missing_openai_auth`,
+not `hosted_tool_unsupported`. Do not strip hosted tools to keep a request on
+a polyfilled model.
+
 ## Apply the setup
 
 Before applying, summarize the resolved scope: providers, plans, enabled

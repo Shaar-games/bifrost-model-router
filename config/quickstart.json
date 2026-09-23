@@ -41,6 +41,7 @@
     "path": "/lib/bifrost/plugins/codex-model-router.so",
     "config": {
       "version": 1,
+      "hosted_tool_fallback_model": "openai/gpt-5.6-sol",
       "instructions_template": "You are a coding agent. Follow the user's instructions and use the available tools carefully.",
       "providers": {
         "openai": {

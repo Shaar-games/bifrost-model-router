@@ -199,6 +199,15 @@ Sign in through Codex Desktop, or run `codex login` if you use the CLI. Then
 fully restart Codex and create a new thread. The router does not store an
 OpenAI credential.
 
+### `web_search` is unavailable through a Chat Completions polyfill
+
+The selected managed model uses a Chat Completions adapter, which cannot run
+Codex's hosted search tool. Ask the setup agent to set
+`plugins[].config.hosted_tool_fallback_model` in the router JSON to a native
+OpenAI Responses model available through your Codex login, then rerun the setup
+script. The whole search request will use that OpenAI model. Restart Codex and
+create a new task after the router is updated.
+
 ### HTTP 401
 
 Rerun the setup script so the virtual key in `~/.codex/config.toml` and the key
