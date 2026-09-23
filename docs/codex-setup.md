@@ -7,12 +7,9 @@ configures new Codex threads.
 
 ## Quick start
 
-You need Linux, Docker with a running daemon, and the Codex CLI. Nix is not
-required. Sign in to Codex first:
-
-```sh
-codex login status || codex login
-```
+You need Linux, Docker with a running daemon, and either Codex Desktop or the
+Codex CLI. Nix is not required, and the setup script does not require the CLI.
+Sign in through the Codex client you use before starting setup.
 
 Open this repository in Codex and describe the outcome at any level of detail:
 
@@ -197,8 +194,9 @@ custom ID.
 
 ### `missing_openai_auth`
 
-Run `codex login`, then start a new thread. The router does not store an OpenAI
-credential.
+Sign in through Codex Desktop, or run `codex login` if you use the CLI. Then
+fully restart Codex and create a new thread. The router does not store an
+OpenAI credential.
 
 ### HTTP 401
 

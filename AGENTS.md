@@ -239,8 +239,8 @@ Then run the low-level executor non-interactively:
 
 The executor pulls the public
 `ghcr.io/applyinnovations/bifrost-model-router:main` image by default; local Nix
-is not required. Use an image override only when the user explicitly requests
-another published build.
+and the Codex CLI are not required for Desktop users. Use an image override
+only when the user explicitly requests another published build.
 
 Omit `--env-file` only when the generated config has no managed-provider
 credential references. Do not pass `--replace` unless the existing named

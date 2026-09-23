@@ -12,6 +12,14 @@ export XDG_STATE_HOME="$test_root/state"
 source "$script_dir/setup-local.sh"
 test "$default_model" = "gpt-5.6-sol"
 test "$reasoning_effort" = "medium"
+if grep -Eq 'for command in .*\bcodex\b' "$script_dir/setup-local.sh"; then
+	echo "Codex CLI must remain optional for Desktop-only installations" >&2
+	exit 1
+fi
+if grep -Eq '^[[:space:]]*if ! codex login status' "$script_dir/setup-local.sh"; then
+	echo "setup must not require a Codex CLI login" >&2
+	exit 1
+fi
 
 mkdir -p "$test_root/input"
 jq '

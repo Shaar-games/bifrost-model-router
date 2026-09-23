@@ -275,16 +275,12 @@ main() {
 	local -a provider_env_args=()
 
 	parse_args "$@"
-	for command in docker codex openssl curl awk sed grep jq stat cp sort; do
+	for command in docker openssl curl awk sed grep jq stat cp sort; do
 		require_command "$command"
 	done
 
 	if ! docker info >/dev/null 2>&1; then
 		printf 'error: Docker is not available; start the daemon and check your access\n' >&2
-		exit 1
-	fi
-	if ! codex login status >/dev/null 2>&1; then
-		printf 'error: Codex is not signed in; run codex login, then rerun setup\n' >&2
 		exit 1
 	fi
 	prepare_inputs
