@@ -7,8 +7,9 @@ configures new Codex threads.
 
 ## Quick start
 
-You need Linux, Docker with a running daemon, and either Codex Desktop or the
-Codex CLI. Nix is not required, and the setup script does not require the CLI.
+You need Linux or macOS, Docker with a running daemon, `jq`, and either Codex
+Desktop or the Codex CLI. Nix is not required, and the setup script does not
+require the CLI.
 Sign in through the Codex client you use before starting setup.
 
 Open this repository in Codex and describe the outcome at any level of detail:

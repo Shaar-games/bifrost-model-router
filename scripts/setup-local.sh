@@ -86,6 +86,13 @@ require_command() {
 	fi
 }
 
+file_mode() {
+	case "$(uname -s)" in
+	Darwin) stat -f '%Lp' "$1" ;;
+	*) stat -c '%a' "$1" ;;
+	esac
+}
+
 acknowledge() {
 	local prompt="$1"
 	local expected="$2"
@@ -106,7 +113,7 @@ container_exists() {
 
 prepare_inputs() {
 	local permissions required_name
-	local -a required_names
+	local -a required_names=()
 
 	if [[ -L "$config_source" || ! -f "$config_source" ]]; then
 		printf 'error: router config must be a regular, non-symlink file: %s\n' "$config_source" >&2
@@ -129,7 +136,9 @@ prepare_inputs() {
 		;;
 	esac
 
-	mapfile -t required_names < <(
+	while IFS= read -r required_name; do
+		required_names+=("$required_name")
+	done < <(
 		jq -r '.. | strings | select(startswith("env.")) | ltrimstr("env.")' "$config_source" |
 			sort -u | grep -v '^BIFROST_QUICKSTART_VK$' || true
 	)
@@ -138,7 +147,7 @@ prepare_inputs() {
 			printf 'error: provider env file must be a regular, non-symlink file: %s\n' "$provider_env" >&2
 			exit 1
 		fi
-		permissions="$(stat -c '%a' "$provider_env")"
+		permissions="$(file_mode "$provider_env")"
 		if (((8#$permissions & 077) != 0)); then
 			printf 'error: provider env file must not be accessible by group or others (mode is %s)\n' "$permissions" >&2
 			exit 1
@@ -206,7 +215,7 @@ install_codex_config() {
 		return 1
 	fi
 
-	timestamp="$(date -u +%Y%m%dT%H%M%S.%NZ)"
+	timestamp="$(date -u +%Y%m%dT%H%M%SZ).$$"
 	if [[ -f "$codex_config" ]]; then
 		backup="${codex_config}.bak.${timestamp}"
 		cp -p -- "$codex_config" "$backup"

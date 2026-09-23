@@ -21,6 +21,8 @@ if grep -Eq '^[[:space:]]*if ! codex login status' "$script_dir/setup-local.sh";
 	exit 1
 fi
 
+prepare_inputs
+
 mkdir -p "$test_root/input"
 jq '
   .providers.managed = {
@@ -49,13 +51,23 @@ reasoning_effort="medium"
 prepare_inputs
 stage_runtime_config
 test -f "$runtime_config"
-test "$(stat -c '%a' "$runtime_config")" = 644
+test "$(file_mode "$runtime_config")" = 644
 
 install_codex_config sk-bf-test-only >/dev/null
 grep -Fqx 'model = "managed/text-model"' "$codex_config"
 grep -Fqx 'model_reasoning_effort = "medium"' "$codex_config"
 grep -Fqx 'http_headers = { "x-bf-vk" = "sk-bf-test-only" }' "$codex_config"
-test "$(stat -c '%a' "$codex_config")" = 600
+test "$(file_mode "$codex_config")" = 600
+
+install_codex_config sk-bf-replacement >/dev/null
+test "$(file_mode "$codex_config")" = 600
+grep -Fqx 'http_headers = { "x-bf-vk" = "sk-bf-replacement" }' "$codex_config"
+for backup in "$CODEX_HOME"/config.toml.bak.*; do
+	test -f "$backup" && break
+done
+test -f "$backup"
+test "$(file_mode "$backup")" = 600
+grep -Fqx 'http_headers = { "x-bf-vk" = "sk-bf-test-only" }' "$backup"
 
 chmod 0644 "$provider_env"
 if (prepare_inputs) >/dev/null 2>&1; then
