@@ -4,17 +4,57 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"sort"
 	"strings"
+	"sync"
 )
 
-// debugToolsEnabled logs only tool shapes and input item types, never prompts,
-// arguments, outputs or headers.
-var debugToolsEnabled = os.Getenv("ROUTER_DEBUG_TOOLS") != ""
+// debugToolsEnabled logs only tool shapes, input item types and error bodies, never
+// prompts, arguments, outputs or headers. It is read lazily because the server
+// loads providers.env into the environment after package initialization.
+var debugToolsEnabled = sync.OnceValue(func() bool { return os.Getenv("ROUTER_DEBUG_TOOLS") != "" })
+
+// debugErrorWriter records the beginning of non-2xx response bodies.
+type debugErrorWriter struct {
+	http.ResponseWriter
+	status int
+	body   []byte
+}
+
+func (w *debugErrorWriter) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *debugErrorWriter) Write(data []byte) (int, error) {
+	if w.status >= 400 && len(w.body) < 2048 {
+		w.body = append(w.body, data[:min(len(data), 2048-len(w.body))]...)
+	}
+	return w.ResponseWriter.Write(data)
+}
+
+func (w *debugErrorWriter) Flush() {
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func withDebugErrors(path string, w http.ResponseWriter, serve func(http.ResponseWriter)) {
+	if !debugToolsEnabled() {
+		serve(w)
+		return
+	}
+	recorder := &debugErrorWriter{ResponseWriter: w, status: http.StatusOK}
+	serve(recorder)
+	if recorder.status >= 400 {
+		log.Printf("router-debug %s error status=%d body=%s", path, recorder.status, recorder.body)
+	}
+}
 
 func logToolShapes(stage string, body []byte) {
-	if !debugToolsEnabled {
+	if !debugToolsEnabled() {
 		return
 	}
 	var envelope struct {
