@@ -97,6 +97,10 @@ func (h *Handler) serveResponses(w http.ResponseWriter, req *http.Request) {
 			writeError(w, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
 			return
 		}
+		if routed, err = responsescompat.FlattenRootVariants(routed); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
 	}
 	if resolved.Provider.CredentialMode == config.CredentialRequestPassthrough {
 		routed, err = rewriteModel(routed, resolved.UpstreamModel)
