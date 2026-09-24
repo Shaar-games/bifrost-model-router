@@ -1,0 +1,121 @@
+# Development toolchain and tasks. Run `mise install` once, then `mise tasks`.
+#
+# The native server embeds Bifrost, whose config store uses SQLite through
+# github.com/mattn/go-sqlite3, so every build needs cgo and a C compiler.
+# Zig provides one C cross-compiler for all targets; `build` uses the host
+# toolchain (on Windows, a MinGW gcc such as WinLibs, not Cygwin).
+
+[tools]
+go = "1.27"
+zig = "0.15"
+
+[env]
+CGO_ENABLED = "1"
+# Build flags live in GOFLAGS so task commands need no shell quoting on Windows.
+GOFLAGS = '-trimpath "-ldflags=-s -w"'
+
+[tasks.build]
+description = "Build the native server, gateway and mock provider for this machine into dist/native"
+run = "go build -o dist/native/ ./cmd/server ./cmd/gateway ./cmd/mock-provider"
+
+[tasks."build:windows-amd64"]
+description = "Cross-compile the native server for Windows x64"
+env = { GOOS = "windows", GOARCH = "amd64", CC = "zig cc -target x86_64-windows-gnu", CXX = "zig c++ -target x86_64-windows-gnu" }
+run = "go build -o dist/windows-amd64/bifrost-model-router-server.exe ./cmd/server"
+
+[tasks."build:windows-arm64"]
+description = "Cross-compile the native server for Windows ARM64"
+env = { GOOS = "windows", GOARCH = "arm64", CC = "zig cc -target aarch64-windows-gnu", CXX = "zig c++ -target aarch64-windows-gnu" }
+run = "go build -o dist/windows-arm64/bifrost-model-router-server.exe ./cmd/server"
+
+[tasks."build:linux-amd64"]
+description = "Cross-compile a static native server for Linux x64 (musl)"
+env = { GOOS = "linux", GOARCH = "amd64", CC = "zig cc -target x86_64-linux-musl", CXX = "zig c++ -target x86_64-linux-musl", GOFLAGS = '-trimpath "-ldflags=-s -w -linkmode=external -extldflags=-static"' }
+run = "go build -o dist/linux-amd64/bifrost-model-router-server ./cmd/server"
+
+[tasks."build:linux-arm64"]
+description = "Cross-compile a static native server for Linux ARM64 (musl)"
+env = { GOOS = "linux", GOARCH = "arm64", CC = "zig cc -target aarch64-linux-musl", CXX = "zig c++ -target aarch64-linux-musl", GOFLAGS = '-trimpath "-ldflags=-s -w -linkmode=external -extldflags=-static"' }
+run = "go build -o dist/linux-arm64/bifrost-model-router-server ./cmd/server"
+
+# cgo on macOS needs Apple SDK headers, so darwin targets must run on a macOS host with Xcode tools.
+[tasks."build:darwin-amd64"]
+description = "Build the native server for macOS Intel (macOS host only)"
+env = { GOOS = "darwin", GOARCH = "amd64", CC = "clang", CXX = "clang++" }
+run = "go build -o dist/darwin-amd64/bifrost-model-router-server ./cmd/server"
+
+[tasks."build:darwin-arm64"]
+description = "Build the native server for macOS Apple Silicon (macOS host only)"
+env = { GOOS = "darwin", GOARCH = "arm64", CC = "clang", CXX = "clang++" }
+run = "go build -o dist/darwin-arm64/bifrost-model-router-server ./cmd/server"
+
+[tasks."build:darwin"]
+description = "Build the native server for both macOS architectures (macOS host only)"
+depends = ["build:darwin-amd64", "build:darwin-arm64"]
+
+[tasks."build:all"]
+description = "Cross-compile the native server for Windows and Linux from any host"
+depends = [
+  "build:windows-amd64",
+  "build:windows-arm64",
+  "build:linux-amd64",
+  "build:linux-arm64",
+]
+
+[tasks.gateway]
+description = "Build the static Linux gateway used by the Docker image (no cgo)"
+env = { GOOS = "linux", GOARCH = "amd64", CGO_ENABLED = "0" }
+run = "go build -o dist/linux-amd64/gateway ./cmd/gateway"
+
+[tasks.test]
+description = "Run the Go test suite"
+run = "go test ./..."
+
+[tasks.vet]
+description = "Run go vet"
+run = "go vet ./..."
+
+[tasks.fmt]
+description = "Format Go sources"
+run = "go fmt ./..."
+
+[tasks.tidy]
+description = "Tidy go.mod and go.sum"
+run = "go mod tidy"
+
+[tasks.check]
+description = "Vet and test (run before committing)"
+depends = ["vet", "test"]
+
+[tasks.run]
+description = "Run the native server from source on 127.0.0.1:8080 with the default config paths"
+run = "go run ./cmd/server"
+
+[tasks.mock]
+description = "Run the mock OpenAI-compatible Chat provider on 127.0.0.1:18102"
+run = "go run ./cmd/mock-provider -listen 127.0.0.1:18102 -mode chat -expected-token bifrost-canary"
+
+[tasks.install]
+description = "Build and install the native server for the current user, start it at logon and restart it"
+depends = ["build"]
+run_windows = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-windows.ps1"
+run = "echo 'install is only automated on Windows; run dist/native/server -addr 127.0.0.1:80' && exit 1"
+
+[tasks.restart]
+description = "Restart the installed native server (Windows)"
+run_windows = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-windows.ps1 -RestartOnly"
+run = "echo 'restart is only automated on Windows' && exit 1"
+
+[tasks.logs]
+description = "Show the last lines of the installed native server log (Windows)"
+run_windows = "powershell -NoProfile -Command \"Get-Content -Tail 50 -Wait $env:LOCALAPPDATA\\bifrost-model-router\\router.log\""
+run = "echo 'logs is only automated on Windows' && exit 1"
+
+[tasks.health]
+description = "Check that the local router answers"
+run = "curl -fsS http://127.0.0.1/health"
+
+[tasks.clean]
+description = "Remove build outputs"
+run_windows = "powershell -NoProfile -Command \"Remove-Item -Recurse -Force -ErrorAction SilentlyContinue dist\""
+run = "rm -rf dist"
