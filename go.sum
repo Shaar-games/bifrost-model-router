@@ -52,8 +52,8 @@ github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA
 github.com/ProtonMail/go-crypto v1.1.6 h1:ZcV+Ropw6Qn0AX9brlQLAUXfqLBc7Bl+f/DmNxpLfdw=
 github.com/ProtonMail/go-crypto v1.1.6/go.mod h1:rA3QumHc/FZ8pAHreoekgiAbzpNsfQAosU5td4SnOrE=
 github.com/RaveNoX/go-jsoncommentstrip v1.0.0/go.mod h1:78ihd09MekBnJnxpICcwzCMzGrKSKYe4AqU6PDYYpjk=
-github.com/Shaar-games/bifrost/core v1.9.1-0.20260924164410-bc588060ecca h1:26LxZBFQp9HlZ3rOenigVI+GFhZrxHSnmmnPYP4yWgo=
-github.com/Shaar-games/bifrost/core v1.9.1-0.20260924164410-bc588060ecca/go.mod h1:bgTt5CsqB7duKiy/pC0uUMTxIRnvjj0t2OvH7Tlvuz0=
+github.com/Shaar-games/bifrost/core v1.9.1-0.20260924184744-e8a0c3321205 h1:A98KwqiFSiXSyxjBdOox8zDS7+MWjCDFdnATOiaQWlI=
+github.com/Shaar-games/bifrost/core v1.9.1-0.20260924184744-e8a0c3321205/go.mod h1:bgTt5CsqB7duKiy/pC0uUMTxIRnvjj0t2OvH7Tlvuz0=
 github.com/Shaar-games/bifrost/transports v1.6.12-0.20260924164410-bc588060ecca h1:7WEABcP803prSNWhkNzxKtSZ5jWmK7BIMpUyO/ZBxAM=
 github.com/Shaar-games/bifrost/transports v1.6.12-0.20260924164410-bc588060ecca/go.mod h1:i7iYKd/A+QrO7yBLKzwM75AZHWN8iJkiaQpeFm0AXPc=
 github.com/andybalholm/brotli v1.2.2 h1:HzTuoo2ErYQqf5qvcJInB8uvqSVxRttzkFexPWtnceM=

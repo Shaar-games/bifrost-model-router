@@ -79,12 +79,14 @@ func (h *Handler) serveResponses(w http.ResponseWriter, req *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "could not read request body")
 		return
 	}
+	logToolShapes("codex-request", body)
 	routing, err := responsescompat.RouteHostedTools(body, h.cfg)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
 		return
 	}
 	routed := routing.Body
+	logToolShapes("routed-request", routed)
 	resolved, err := h.resolveRequestModel(routed)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "unresolved_model", err.Error())

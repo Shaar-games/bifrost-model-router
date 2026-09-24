@@ -240,6 +240,6 @@ require (
 	gorm.io/gorm v1.31.1 // indirect
 )
 
-replace github.com/maximhq/bifrost/core => github.com/Shaar-games/bifrost/core v1.9.1-0.20260924164410-bc588060ecca
+replace github.com/maximhq/bifrost/core => github.com/Shaar-games/bifrost/core v1.9.1-0.20260924184744-e8a0c3321205
 
 replace github.com/maximhq/bifrost/transports => github.com/Shaar-games/bifrost/transports v1.6.12-0.20260924164410-bc588060ecca
