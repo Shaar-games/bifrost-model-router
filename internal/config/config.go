@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 
@@ -31,12 +32,87 @@ const (
 	ResponsesUnsupported  ResponsesMode = "unsupported"
 )
 
+// HostedToolPolicy selects how Chat Completions-polyfilled requests carrying
+// server-side tools are handled.
+type HostedToolPolicy string
+
+const (
+	HostedToolFallback HostedToolPolicy = "fallback"
+	HostedToolStrip    HostedToolPolicy = "strip"
+	HostedToolReject   HostedToolPolicy = "reject"
+	// HostedToolBridge exposes the tool to the polyfilled model as a function
+	// and executes each call on the fallback model.
+	HostedToolBridge HostedToolPolicy = "bridge"
+)
+
+// BridgeableHostedTools lists the hosted tool families the gateway can execute
+// on behalf of a polyfilled model.
+var BridgeableHostedTools = []string{"image_generation", "web_search"}
+
+func ParseHostedToolPolicy(value string) (HostedToolPolicy, error) {
+	switch policy := HostedToolPolicy(strings.ToLower(strings.TrimSpace(value))); policy {
+	case HostedToolFallback, HostedToolStrip, HostedToolReject:
+		return policy, nil
+	default:
+		return "", fmt.Errorf("hosted_tool_policy %q must be one of fallback, strip, reject", value)
+	}
+}
+
+// HostedToolFamily groups versioned tool types such as web_search_preview
+// under the key used by hosted_tool_overrides.
+func HostedToolFamily(toolType string) string {
+	family := strings.ToLower(strings.TrimSpace(toolType))
+	if strings.HasPrefix(family, "web_search") {
+		return "web_search"
+	}
+	return family
+}
+
+// HostedToolPolicyFor returns the effective policy for one hosted tool type.
+func (c Config) HostedToolPolicyFor(toolType string) HostedToolPolicy {
+	if policy, ok := c.HostedToolOverrides[HostedToolFamily(toolType)]; ok {
+		return policy
+	}
+	return c.HostedToolPolicy
+}
+
+func (c Config) needsHostedToolModel() bool {
+	if c.HostedToolPolicy == HostedToolFallback {
+		return true
+	}
+	for _, policy := range c.HostedToolOverrides {
+		if policy == HostedToolFallback || policy == HostedToolBridge {
+			return true
+		}
+	}
+	return false
+}
+
+// OverrideHostedToolPolicy replaces the default policy of an already validated
+// config. The fallback model is cleared once no policy can use it, so no
+// request can be rerouted to it.
+func (c *Config) OverrideHostedToolPolicy(value string) error {
+	policy, err := ParseHostedToolPolicy(value)
+	if err != nil {
+		return err
+	}
+	c.HostedToolPolicy = policy
+	if !c.needsHostedToolModel() {
+		c.HostedToolFallbackModel = ""
+	} else if c.HostedToolFallbackModel == "" {
+		return fmt.Errorf("hosted_tool_policy %q requires a resolvable hosted_tool_fallback_model", policy)
+	}
+	return nil
+}
+
 type Config struct {
-	Version                 int                        `json:"version" yaml:"version"`
-	Instructions            string                     `json:"instructions_template,omitempty" yaml:"instructions_template,omitempty"`
-	HostedToolFallbackModel string                     `json:"hosted_tool_fallback_model,omitempty" yaml:"hosted_tool_fallback_model,omitempty"`
-	Providers               map[string]ProviderProfile `json:"providers" yaml:"providers"`
-	Models                  map[string]ModelProfile    `json:"models" yaml:"models"`
+	Version                 int                         `json:"version" yaml:"version"`
+	Instructions            string                      `json:"instructions_template,omitempty" yaml:"instructions_template,omitempty"`
+	HostedToolPolicy        HostedToolPolicy            `json:"hosted_tool_policy,omitempty" yaml:"hosted_tool_policy,omitempty"`
+	HostedToolOverrides     map[string]HostedToolPolicy `json:"hosted_tool_overrides,omitempty" yaml:"hosted_tool_overrides,omitempty"`
+	HostedToolFallbackModel string                      `json:"hosted_tool_fallback_model,omitempty" yaml:"hosted_tool_fallback_model,omitempty"`
+	Providers               map[string]ProviderProfile  `json:"providers" yaml:"providers"`
+	Models                  map[string]ModelProfile     `json:"models" yaml:"models"`
 	resolutionIndex         map[string]ResolvedModel
 	resolvedModels          []ResolvedModel
 }
@@ -241,6 +317,37 @@ func (c *Config) ApplyDefaultsAndValidate() error {
 		c.Models[slug] = model
 	}
 	c.buildResolutionIndex()
+	if c.HostedToolPolicy == "" {
+		c.HostedToolPolicy = HostedToolFallback
+	}
+	policy, err := ParseHostedToolPolicy(string(c.HostedToolPolicy))
+	if err != nil {
+		return err
+	}
+	c.HostedToolPolicy = policy
+	overrides := make(map[string]HostedToolPolicy, len(c.HostedToolOverrides))
+	for tool, value := range c.HostedToolOverrides {
+		family := HostedToolFamily(tool)
+		if _, duplicate := overrides[family]; duplicate {
+			return fmt.Errorf("hosted_tool_overrides has duplicate entries for %q", family)
+		}
+		override := HostedToolPolicy(strings.ToLower(strings.TrimSpace(string(value))))
+		if override == HostedToolBridge {
+			if !slices.Contains(BridgeableHostedTools, family) {
+				return fmt.Errorf("hosted_tool_overrides %q: bridge is only supported for %s", tool, strings.Join(BridgeableHostedTools, ", "))
+			}
+		} else if _, err := ParseHostedToolPolicy(string(override)); err != nil {
+			return fmt.Errorf("hosted_tool_overrides %q must be one of fallback, strip, reject, bridge", tool)
+		}
+		overrides[family] = override
+	}
+	c.HostedToolOverrides = overrides
+	if !c.needsHostedToolModel() {
+		if c.HostedToolFallbackModel != "" {
+			return errors.New("hosted_tool_fallback_model requires a fallback or bridge hosted tool policy")
+		}
+		return nil
+	}
 	if c.HostedToolFallbackModel == "" {
 		if fallback, ok := c.ResolveModel(DefaultHostedToolFallbackModel); ok &&
 			fallback.Slug == DefaultHostedToolFallbackModel &&
@@ -259,6 +366,13 @@ func (c *Config) ApplyDefaultsAndValidate() error {
 			return fmt.Errorf("hosted_tool_fallback_model %q must use native Responses with request_passthrough credentials", c.HostedToolFallbackModel)
 		}
 		c.HostedToolFallbackModel = fallback.Slug
+	}
+	if c.HostedToolFallbackModel == "" {
+		for tool, policy := range c.HostedToolOverrides {
+			if policy == HostedToolBridge || policy == HostedToolFallback {
+				return fmt.Errorf("hosted_tool_overrides %q requires a resolvable hosted_tool_fallback_model", tool)
+			}
+		}
 	}
 	return nil
 }

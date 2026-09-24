@@ -12,6 +12,7 @@ config_source="${repo_dir}/config/quickstart.json"
 provider_env=""
 default_model="gpt-5.6-sol"
 reasoning_effort="medium"
+hosted_tool_policy=""
 accept_plaintext_key=false
 accept_new_threads=false
 replace_existing=false
@@ -30,6 +31,7 @@ Options:
   --model MODEL                  Default Codex model
   --reasoning-effort EFFORT      minimal, low, medium, high, or xhigh
   --image IMAGE                  OCI image override
+  --hosted-tool-policy POLICY    fallback, strip, or reject for polyfilled models
   --accept-plaintext-key         Accept the local virtual-key notice
   --accept-new-threads-only      Accept that defaults affect new threads only
   --replace                      Replace existing quickstart containers
@@ -40,7 +42,7 @@ EOF
 parse_args() {
 	while (($# > 0)); do
 		case "$1" in
-		--config | --env-file | --model | --reasoning-effort | --image)
+		--config | --env-file | --model | --reasoning-effort | --image | --hosted-tool-policy)
 			if (($# < 2)); then
 				printf 'error: %s requires a value\n' "$1" >&2
 				exit 2
@@ -51,6 +53,15 @@ parse_args() {
 			--model) default_model="$2" ;;
 			--reasoning-effort) reasoning_effort="$2" ;;
 			--image) image_name="$2" ;;
+			--hosted-tool-policy)
+				case "$2" in
+				fallback | strip | reject) hosted_tool_policy="$2" ;;
+				*)
+					printf 'error: --hosted-tool-policy must be fallback, strip, or reject\n' >&2
+					exit 2
+					;;
+				esac
+				;;
 			esac
 			shift 2
 			;;
@@ -368,6 +379,7 @@ main() {
 		--publish 127.0.0.1:80:8082 \
 		--env GATEWAY_ADDR=0.0.0.0:8082 \
 		--env "BIFROST_UPSTREAM_URL=http://${core_container}:8080" \
+		${hosted_tool_policy:+--env "HOSTED_TOOL_POLICY=${hosted_tool_policy}"} \
 		--volume "${runtime_config}:/etc/bifrost/config.json:ro" \
 		--entrypoint /bin/gateway \
 		"$image_name" >/dev/null

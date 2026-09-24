@@ -105,6 +105,39 @@ tool, the transport rewrites the whole request to the fallback before credential
 selection. The fallback uses the caller's forwarded OpenAI token; the router
 never stores an OpenAI key.
 
+`hosted_tool_policy` controls this behavior and defaults to `fallback`. Set it
+to `strip` to keep such requests on the selected polyfilled model after
+removing the hosted tools it cannot execute, or to `reject` to fail them with
+`hosted_tool_unsupported`.
+
+`hosted_tool_overrides` sets the policy per tool family, keyed by tool type
+(`web_search` also covers versioned types such as `web_search_preview`). It
+accepts the same values plus `bridge`, available for `web_search` and
+`image_generation`:
+
+```json
+"hosted_tool_policy": "strip",
+"hosted_tool_overrides": { "web_search": "bridge", "image_generation": "bridge" },
+"hosted_tool_fallback_model": "openai/gpt-5.6-sol"
+```
+
+A bridged tool is offered to the polyfilled model as an ordinary function.
+The model keeps the whole turn; only when it actually calls the function does
+the gateway run that one tool on the fallback model with the caller's Codex
+login, return the result to the polyfilled model, and continue it. Codex
+receives a single response in which the call appears as a native
+`web_search_call` or `image_generation_call` item. Each bridged call consumes
+OpenAI quota; nothing else does. Search results are only available to the
+turn that requested them, because Codex replays the synthesized items and the
+gateway removes them from later polyfilled requests.
+
+Precedence for one request is `reject`, then `fallback`, then `bridge` and
+`strip` per tool. A fallback model is resolved only when some policy uses it;
+otherwise `hosted_tool_fallback_model` must be omitted, which also disables
+the Images API bridge. The Docker gateway accepts a `HOSTED_TOOL_POLICY`
+environment override of the default policy (`setup-local.sh
+--hosted-tool-policy`) for core images that predate these fields.
+
 `namespace` is not considered hosted. Bifrost flattens namespace members into
 ordinary function tools for providers without native namespace support and
 restores namespaced calls in the returned Responses payload.

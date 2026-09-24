@@ -46,17 +46,39 @@ func (p *provider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Model  string `json:"model"`
-		Stream bool   `json:"stream"`
+		Model    string `json:"model"`
+		Stream   bool   `json:"stream"`
+		Messages []struct {
+			Role    string `json:"role"`
+			Content any    `json:"content"`
+		} `json:"messages"`
+		Tools []struct {
+			Function struct {
+				Name string `json:"name"`
+			} `json:"function"`
+		} `json:"tools"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"message": "invalid JSON"}})
 		return
 	}
+	offersWebSearch, answered := false, ""
+	for _, tool := range body.Tools {
+		offersWebSearch = offersWebSearch || tool.Function.Name == "web_search"
+	}
+	for _, message := range body.Messages {
+		if message.Role == "tool" {
+			answered = fmt.Sprint(message.Content)
+		}
+	}
 	if body.Stream {
 		switch {
 		case p.mode == "native" && strings.HasSuffix(r.URL.Path, "/responses"):
 			writeNativeStream(w, body.Model)
+		case p.mode == "chat" && strings.HasSuffix(r.URL.Path, "/chat/completions") && offersWebSearch && answered == "":
+			writeChatToolCallStream(w, body.Model, "web_search", `{"query":"mock query"}`)
+		case p.mode == "chat" && strings.HasSuffix(r.URL.Path, "/chat/completions") && answered != "":
+			writeChatTextStream(w, body.Model, "tool said: "+answered)
 		case p.mode == "chat" && strings.HasSuffix(r.URL.Path, "/chat/completions"):
 			writeChatStream(w, body.Model)
 		default:
@@ -112,6 +134,44 @@ func writeChatStream(w http.ResponseWriter, model string) {
 	if flusher, ok := w.(http.Flusher); ok {
 		flusher.Flush()
 	}
+}
+
+func writeChatToolCallStream(w http.ResponseWriter, model, name, arguments string) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	writeSSE(w, "", map[string]any{
+		"id": "chatcmpl_tool", "object": "chat.completion.chunk", "created": 1, "model": model,
+		"choices": []map[string]any{{"index": 0, "delta": map[string]any{"role": "assistant", "tool_calls": []map[string]any{{
+			"index": 0, "id": "call_mock", "type": "function", "function": map[string]any{"name": name, "arguments": ""},
+		}}}, "finish_reason": nil}},
+	})
+	writeSSE(w, "", map[string]any{
+		"id": "chatcmpl_tool", "object": "chat.completion.chunk", "created": 1, "model": model,
+		"choices": []map[string]any{{"index": 0, "delta": map[string]any{"tool_calls": []map[string]any{{
+			"index": 0, "function": map[string]any{"arguments": arguments},
+		}}}, "finish_reason": nil}},
+	})
+	writeSSE(w, "", map[string]any{
+		"id": "chatcmpl_tool", "object": "chat.completion.chunk", "created": 1, "model": model,
+		"choices": []map[string]any{{"index": 0, "delta": map[string]any{}, "finish_reason": "tool_calls"}},
+		"usage":   map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+	})
+	fmt.Fprint(w, "data: [DONE]\n\n")
+}
+
+func writeChatTextStream(w http.ResponseWriter, model, text string) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	writeSSE(w, "", map[string]any{
+		"id": "chatcmpl_text", "object": "chat.completion.chunk", "created": 1, "model": model,
+		"choices": []map[string]any{{"index": 0, "delta": map[string]any{"role": "assistant", "content": text}, "finish_reason": nil}},
+	})
+	writeSSE(w, "", map[string]any{
+		"id": "chatcmpl_text", "object": "chat.completion.chunk", "created": 1, "model": model,
+		"choices": []map[string]any{{"index": 0, "delta": map[string]any{}, "finish_reason": "stop"}},
+		"usage":   map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+	})
+	fmt.Fprint(w, "data: [DONE]\n\n")
 }
 
 func writeSSE(w http.ResponseWriter, event string, value any) {

@@ -67,6 +67,91 @@ models:
 	}
 }
 
+func TestNonFallbackPolicyDisablesDefaultFallback(t *testing.T) {
+	const providers = `
+providers:
+  openai: {credential_mode: request_passthrough, responses_mode: native, discover_models: true}
+  managed: {credential_mode: bifrost, responses_mode: chat_polyfill, discover_models: true}
+models:
+  openai/gpt-5.6-sol: {codex: {}}
+`
+	cfg, err := Decode(strings.NewReader("version: 1\nhosted_tool_policy: strip\n" + providers))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.HostedToolPolicy != HostedToolStrip || cfg.HostedToolFallbackModel != "" {
+		t.Fatalf("policy = %q fallback = %q", cfg.HostedToolPolicy, cfg.HostedToolFallbackModel)
+	}
+	if _, err := Decode(strings.NewReader("version: 1\nhosted_tool_policy: reject\nhosted_tool_fallback_model: openai/gpt-5.6-sol\n" + providers)); err == nil {
+		t.Fatal("fallback model was accepted with the reject policy")
+	}
+	if _, err := Decode(strings.NewReader("version: 1\nhosted_tool_policy: sometimes\n" + providers)); err == nil {
+		t.Fatal("unknown policy was accepted")
+	}
+
+	cfg, err = Decode(strings.NewReader("version: 1\n" + providers))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.OverrideHostedToolPolicy("reject"); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.HostedToolPolicy != HostedToolReject || cfg.HostedToolFallbackModel != "" {
+		t.Fatalf("override policy = %q fallback = %q", cfg.HostedToolPolicy, cfg.HostedToolFallbackModel)
+	}
+}
+
+func TestHostedToolOverridesSelectPerToolPolicy(t *testing.T) {
+	const providers = `
+providers:
+  openai: {credential_mode: request_passthrough, responses_mode: native, discover_models: true}
+  managed: {credential_mode: bifrost, responses_mode: chat_polyfill, discover_models: true}
+models:
+  openai/gpt-5.6-sol: {codex: {}}
+`
+	cfg, err := Decode(strings.NewReader(`version: 1
+hosted_tool_policy: strip
+hosted_tool_fallback_model: openai/gpt-5.6-sol
+hosted_tool_overrides: {Web_Search: bridge, image_generation: BRIDGE, file_search: reject}
+` + providers))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for tool, want := range map[string]HostedToolPolicy{
+		"web_search_preview": HostedToolBridge, "image_generation": HostedToolBridge,
+		"file_search": HostedToolReject, "code_interpreter": HostedToolStrip,
+	} {
+		if got := cfg.HostedToolPolicyFor(tool); got != want {
+			t.Errorf("policy for %s = %q, want %q", tool, got, want)
+		}
+	}
+	if err := cfg.OverrideHostedToolPolicy("reject"); err != nil || cfg.HostedToolFallbackModel != "openai/gpt-5.6-sol" {
+		t.Fatalf("override kept model %q, err = %v", cfg.HostedToolFallbackModel, err)
+	}
+
+	for name, body := range map[string]string{
+		"bridge on unsupported tool": "hosted_tool_policy: strip\nhosted_tool_fallback_model: openai/gpt-5.6-sol\nhosted_tool_overrides: {file_search: bridge}\n",
+		"unknown override":           "hosted_tool_policy: strip\nhosted_tool_fallback_model: openai/gpt-5.6-sol\nhosted_tool_overrides: {web_search: maybe}\n",
+		"bridge default policy":      "hosted_tool_policy: bridge\nhosted_tool_fallback_model: openai/gpt-5.6-sol\n",
+		"duplicate family":           "hosted_tool_policy: strip\nhosted_tool_fallback_model: openai/gpt-5.6-sol\nhosted_tool_overrides: {web_search: bridge, web_search_preview: strip}\n",
+	} {
+		if _, err := Decode(strings.NewReader("version: 1\n" + body + providers)); err == nil {
+			t.Errorf("%s was accepted", name)
+		}
+	}
+	if _, err := Decode(strings.NewReader(`version: 1
+hosted_tool_policy: strip
+hosted_tool_overrides: {web_search: bridge}
+providers:
+  openai: {credential_mode: request_passthrough, responses_mode: native}
+  managed: {credential_mode: bifrost, responses_mode: chat_polyfill, discover_models: true}
+models:
+  openai/gpt-5.6-sol: {codex: {}}
+`)); err == nil {
+		t.Error("bridge without a resolvable fallback model was accepted")
+	}
+}
+
 func TestHostedToolFallbackDoesNotInventStaticModel(t *testing.T) {
 	cfg, err := Decode(strings.NewReader(`
 version: 1

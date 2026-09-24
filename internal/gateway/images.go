@@ -58,35 +58,15 @@ func (h *Handler) serveImageGeneration(w http.ResponseWriter, req *http.Request)
 	if imageReq.OutputCompression != nil {
 		tool["output_compression"] = *imageReq.OutputCompression
 	}
-	responseBody, err := json.Marshal(map[string]any{
-		"model":       h.cfg.HostedToolFallbackModel,
-		"input":       []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": imageReq.Prompt}}}},
-		"tools":       []any{tool},
-		"tool_choice": map[string]string{"type": "image_generation"},
-		"store":       false,
-		"stream":      true,
-	})
+	upstream, err := h.runHostedTool(req, tool, map[string]string{"type": "image_generation"}, "", imageReq.Prompt)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "image_request_failed", "could not construct image request")
 		return
 	}
-	forward := req.Clone(req.Context())
-	forward.URL.Path = "/v1/responses"
-	forward.Body = io.NopCloser(bytes.NewReader(responseBody))
-	forward.ContentLength = int64(len(responseBody))
-	forward.Header = req.Header.Clone()
-	forward.Header.Del("Content-Length")
-	forward.Header.Set("Content-Type", "application/json")
-	// The Responses dispatcher owns model resolution and the request-scoped
-	// credential policy. Capture its SSE output before shaping an Images reply.
-	upstream := httptest.NewRecorder()
-	h.serveResponses(upstream, forward)
-	upstreamResp := upstream.Result()
-	defer upstreamResp.Body.Close()
-	if upstreamResp.StatusCode != http.StatusOK {
-		w.Header().Set("Content-Type", upstreamResp.Header.Get("Content-Type"))
-		w.WriteHeader(upstreamResp.StatusCode)
-		_, _ = io.Copy(w, upstreamResp.Body)
+	if upstream.Code != http.StatusOK {
+		w.Header().Set("Content-Type", upstream.Header().Get("Content-Type"))
+		w.WriteHeader(upstream.Code)
+		_, _ = w.Write(upstream.Body.Bytes())
 		return
 	}
 	encoded, revised := imageFromSSE(upstream.Body.Bytes())
@@ -101,6 +81,37 @@ func (h *Handler) serveImageGeneration(w http.ResponseWriter, req *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(map[string]any{"created": time.Now().Unix(), "data": []any{data}})
+}
+
+// runHostedTool executes one hosted tool on the fallback model. The Responses
+// dispatcher owns model resolution and the request-scoped credential policy;
+// its SSE output is captured for the caller to reshape.
+func (h *Handler) runHostedTool(req *http.Request, tool map[string]any, toolChoice any, instructions, prompt string) (*httptest.ResponseRecorder, error) {
+	fields := map[string]any{
+		"model":       h.cfg.HostedToolFallbackModel,
+		"input":       []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": prompt}}}},
+		"tools":       []any{tool},
+		"tool_choice": toolChoice,
+		"store":       false,
+		"stream":      true,
+	}
+	if instructions != "" {
+		fields["instructions"] = instructions
+	}
+	responseBody, err := json.Marshal(fields)
+	if err != nil {
+		return nil, err
+	}
+	forward := req.Clone(req.Context())
+	forward.URL.Path = "/v1/responses"
+	forward.Body = io.NopCloser(bytes.NewReader(responseBody))
+	forward.ContentLength = int64(len(responseBody))
+	forward.Header = req.Header.Clone()
+	forward.Header.Del("Content-Length")
+	forward.Header.Set("Content-Type", "application/json")
+	upstream := httptest.NewRecorder()
+	h.serveResponses(upstream, forward)
+	return upstream, nil
 }
 
 func imageFromSSE(body []byte) (encoded, revised string) {

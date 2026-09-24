@@ -29,6 +29,7 @@ type Handler struct {
 	chatGPTURL      *url.URL
 	bifrostProxy    *httputil.ReverseProxy
 	client          *http.Client
+	streamClient    *http.Client
 	chatGPTModelURL string
 	metadataLookup  catalog.MetadataLookup
 }
@@ -53,6 +54,7 @@ func New(cfg config.Config, bifrostURL, chatGPTURL string) (*Handler, error) {
 		chatGPTURL:      chatGPT,
 		bifrostProxy:    proxy,
 		client:          &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }},
+		streamClient:    &http.Client{CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }},
 		chatGPTModelURL: "/backend-api/codex/models",
 		metadataLookup:  editorial.NewOpenRouterResolver().LookupMetadata,
 	}, nil
@@ -77,15 +79,22 @@ func (h *Handler) serveResponses(w http.ResponseWriter, req *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "could not read request body")
 		return
 	}
-	routed, _, err := responsescompat.ApplyHostedToolFallback(body, h.cfg)
+	routing, err := responsescompat.RouteHostedTools(body, h.cfg)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
 		return
 	}
+	routed := routing.Body
 	resolved, err := h.resolveRequestModel(routed)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "unresolved_model", err.Error())
 		return
+	}
+	if resolved.Model.ResponsesMode == config.ResponsesChatPolyfill {
+		if routed, err = dropReplayedHostedItems(routed); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
 	}
 	if resolved.Provider.CredentialMode == config.CredentialRequestPassthrough {
 		routed, err = rewriteModel(routed, resolved.UpstreamModel)
@@ -99,6 +108,10 @@ func (h *Handler) serveResponses(w http.ResponseWriter, req *http.Request) {
 	routed, err = rewriteModel(routed, resolved.Model.Provider+"/"+resolved.UpstreamModel)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+		return
+	}
+	if len(routing.Bridges) > 0 {
+		h.serveBridgedResponses(w, req, routed, routing.Bridges)
 		return
 	}
 	h.proxyBifrost(w, req, "/v1/responses", routed)

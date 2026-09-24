@@ -8,6 +8,11 @@
   "properties": {
     "version": { "const": 1 },
     "instructions_template": { "type": "string" },
+    "hosted_tool_policy": { "enum": ["fallback", "strip", "reject"] },
+    "hosted_tool_overrides": {
+      "type": "object",
+      "additionalProperties": { "enum": ["fallback", "strip", "reject", "bridge"] }
+    },
     "hosted_tool_fallback_model": { "type": "string", "minLength": 1 },
     "providers": { "type": "object", "minProperties": 1, "additionalProperties": { "$ref": "#/$defs/provider" } },
     "models": { "type": "object", "minProperties": 1, "propertyNames": { "pattern": "^[^/]+/.+$" }, "additionalProperties": { "$ref": "#/$defs/model" } }

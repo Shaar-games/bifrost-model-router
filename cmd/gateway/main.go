@@ -15,6 +15,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if policy := os.Getenv("HOSTED_TOOL_POLICY"); policy != "" {
+		if err := cfg.OverrideHostedToolPolicy(policy); err != nil {
+			log.Fatal(err)
+		}
+	}
+	fmt.Printf("Hosted tool policy: %s\n", cfg.HostedToolPolicy)
 	server, err := gateway.NewServer(cfg, gateway.ServerOptions{
 		Addr:       env("GATEWAY_ADDR", "127.0.0.1:8082"),
 		BifrostURL: env("BIFROST_UPSTREAM_URL", "http://127.0.0.1:8080"),
