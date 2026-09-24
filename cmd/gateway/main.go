@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/applyinnovations/bifrost-model-router/internal/gateway"
 )
@@ -16,16 +15,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	handler, err := gateway.New(cfg, env("BIFROST_UPSTREAM_URL", "http://127.0.0.1:8080"), env("CHATGPT_UPSTREAM_URL", "https://chatgpt.com"))
+	server, err := gateway.NewServer(cfg, gateway.ServerOptions{
+		Addr:       env("GATEWAY_ADDR", "127.0.0.1:8082"),
+		BifrostURL: env("BIFROST_UPSTREAM_URL", "http://127.0.0.1:8080"),
+		ChatGPTURL: env("CHATGPT_UPSTREAM_URL", "https://chatgpt.com"),
+	})
 	if err != nil {
 		log.Fatal(err)
-	}
-	server := &http.Server{
-		Addr:              env("GATEWAY_ADDR", "127.0.0.1:8082"),
-		Handler:           handler,
-		ReadHeaderTimeout: 10 * time.Second,
-		IdleTimeout:       120 * time.Second,
-		MaxHeaderBytes:    1 << 20,
 	}
 	fmt.Printf("Codex dispatch gateway listening on %s\n", server.Addr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

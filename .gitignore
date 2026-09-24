@@ -1,4 +1,6 @@
 /result
+/dist/
+/.tmp/
 /result-*
 /.direnv/
 /.env
