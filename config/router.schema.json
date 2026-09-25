@@ -8,7 +8,7 @@
   "properties": {
     "version": { "const": 1 },
     "instructions_template": { "type": "string" },
-    "hosted_tool_policy": { "enum": ["fallback", "strip", "reject"] },
+    "hosted_tool_policy": { "enum": ["fallback", "strip", "reject", "bridge"] },
     "hosted_tool_overrides": {
       "type": "object",
       "additionalProperties": { "enum": ["fallback", "strip", "reject", "bridge"] }

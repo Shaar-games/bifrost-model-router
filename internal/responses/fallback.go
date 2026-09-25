@@ -2,6 +2,7 @@ package responses
 
 import (
 	"encoding/json"
+	"slices"
 	"sort"
 	"strings"
 
@@ -71,7 +72,8 @@ func routeHostedTools(body []byte, cfg config.Config, allowBridge bool) (HostedT
 	}
 	policyFor := func(toolType string) config.HostedToolPolicy {
 		policy := cfg.HostedToolPolicyFor(toolType)
-		if policy == config.HostedToolBridge && !allowBridge {
+		family := config.HostedToolFamily(toolType)
+		if policy == config.HostedToolBridge && (!allowBridge || !slices.Contains(config.BridgeableHostedTools, family)) {
 			return config.HostedToolStrip
 		}
 		return policy

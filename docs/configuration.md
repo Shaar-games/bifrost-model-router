@@ -105,20 +105,21 @@ tool, the transport rewrites the whole request to the fallback before credential
 selection. The fallback uses the caller's forwarded OpenAI token; the router
 never stores an OpenAI key.
 
-`hosted_tool_policy` controls this behavior and defaults to `fallback`. Set it
-to `strip` to keep such requests on the selected polyfilled model after
-removing the hosted tools it cannot execute, or to `reject` to fail them with
-`hosted_tool_unsupported`.
+`hosted_tool_policy` controls this behavior and defaults to `fallback`.
+`fallback` sends the whole request to `hosted_tool_fallback_model`. `strip`
+keeps the request on the selected model after removing hosted tools it cannot
+execute. `reject` fails them with `hosted_tool_unsupported`. `bridge` keeps the
+request on the selected model and executes `web_search` and `image_generation`
+through `hosted_tool_fallback_model`; every other hosted tool is removed.
+The fallback model field does not enable whole-request fallback by itself.
 
 `hosted_tool_overrides` sets the policy per tool family, keyed by tool type
-(`web_search` also covers versioned types such as `web_search_preview`). It
-accepts the same values plus `bridge`, available for `web_search` and
-`image_generation`:
+(`web_search` also covers versioned types such as `web_search_preview`).
+`bridge` is available for `web_search` and `image_generation`:
 
 ```json
-"hosted_tool_policy": "strip",
-"hosted_tool_overrides": { "web_search": "bridge", "image_generation": "bridge" },
-"hosted_tool_fallback_model": "openai/gpt-5.6-sol"
+"hosted_tool_policy": "bridge",
+"hosted_tool_fallback_model": "openai/gpt-6-sol"
 ```
 
 A bridged tool is offered to the polyfilled model as an ordinary function.

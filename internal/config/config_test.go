@@ -131,14 +131,31 @@ hosted_tool_overrides: {Web_Search: bridge, image_generation: BRIDGE, file_searc
 
 	for name, body := range map[string]string{
 		"bridge on unsupported tool": "hosted_tool_policy: strip\nhosted_tool_fallback_model: openai/gpt-5.6-sol\nhosted_tool_overrides: {file_search: bridge}\n",
-		"unknown override":           "hosted_tool_policy: strip\nhosted_tool_fallback_model: openai/gpt-5.6-sol\nhosted_tool_overrides: {web_search: maybe}\n",
-		"bridge default policy":      "hosted_tool_policy: bridge\nhosted_tool_fallback_model: openai/gpt-5.6-sol\n",
+		"unknown override":      "hosted_tool_policy: strip\nhosted_tool_fallback_model: openai/gpt-5.6-sol\nhosted_tool_overrides: {web_search: maybe}\n",
 		"duplicate family":           "hosted_tool_policy: strip\nhosted_tool_fallback_model: openai/gpt-5.6-sol\nhosted_tool_overrides: {web_search: bridge, web_search_preview: strip}\n",
 	} {
 		if _, err := Decode(strings.NewReader("version: 1\n" + body + providers)); err == nil {
 			t.Errorf("%s was accepted", name)
 		}
 	}
+	cfg, err = Decode(strings.NewReader("version: 1\nhosted_tool_policy: bridge\nhosted_tool_fallback_model: openai/gpt-5.6-sol\n" + providers))
+	if err != nil || cfg.HostedToolPolicy != HostedToolBridge || cfg.HostedToolFallbackModel != "openai/gpt-5.6-sol" {
+		t.Fatalf("bridge default policy = %q fallback = %q err = %v", cfg.HostedToolPolicy, cfg.HostedToolFallbackModel, err)
+	}
+	if cfg.HostedToolPolicyFor("web_search") != HostedToolBridge || cfg.HostedToolPolicyFor("file_search") != HostedToolBridge {
+		t.Fatalf("bridge default did not apply to every family")
+	}
+	if _, err := Decode(strings.NewReader(`version: 1
+hosted_tool_policy: bridge
+providers:
+  openai: {credential_mode: request_passthrough, responses_mode: native}
+  managed: {credential_mode: bifrost, responses_mode: chat_polyfill}
+models:
+  openai/gpt-5.6-sol: {codex: {}}
+`)); err == nil {
+		t.Error("bridge without a fallback model was accepted")
+	}
+
 	if _, err := Decode(strings.NewReader(`version: 1
 hosted_tool_policy: strip
 hosted_tool_overrides: {web_search: bridge}

@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,12 +12,16 @@ import (
 	"sync"
 )
 
-// debugToolsEnabled logs only tool shapes, input item types and error bodies, never
-// prompts, arguments, outputs or headers. It is read lazily because the server
-// loads providers.env into the environment after package initialization.
+// debugToolsEnabled logs only tool shapes, input item types, error codes and
+// returned item types. It never logs prompts, arguments, outputs or headers.
+// It is read lazily because the server loads providers.env into the environment
+// after package initialization.
 var debugToolsEnabled = sync.OnceValue(func() bool { return os.Getenv("ROUTER_DEBUG_TOOLS") != "" })
 
-// debugErrorWriter records the beginning of non-2xx response bodies.
+const maxDebugEventBytes = 4096
+
+// debugErrorWriter keeps only a bounded prefix of a non-2xx body so the log can
+// report the error code without retaining the rest of the response.
 type debugErrorWriter struct {
 	http.ResponseWriter
 	status int
@@ -49,8 +54,112 @@ func withDebugErrors(path string, w http.ResponseWriter, serve func(http.Respons
 	recorder := &debugErrorWriter{ResponseWriter: w, status: http.StatusOK}
 	serve(recorder)
 	if recorder.status >= 400 {
-		log.Printf("router-debug %s error status=%d body=%s", path, recorder.status, recorder.body)
+		log.Printf("router-debug %s error status=%d %s", path, recorder.status, errorSummary(recorder.body))
 	}
+}
+
+func errorSummary(body []byte) string {
+	var decoded struct {
+		Error struct {
+			Type    string `json:"type"`
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(body, &decoded) != nil {
+		return "unparsed=true"
+	}
+	message := decoded.Error.Message
+	if len(message) > 160 {
+		message = message[:160]
+	}
+	return fmt.Sprintf("type=%s code=%s message=%q", decoded.Error.Type, decoded.Error.Code, message)
+}
+
+// debugResponseWriter logs the function calls a streamed response returns:
+// type, name and namespace only, never arguments or text.
+type debugResponseWriter struct {
+	http.ResponseWriter
+	buf  []byte
+	skip bool
+}
+
+func (w *debugResponseWriter) Write(data []byte) (int, error) {
+	if debugToolsEnabled() {
+		w.consumeEvents(data)
+	}
+	return w.ResponseWriter.Write(data)
+}
+
+// consumeEvents splits SSE events. An event larger than maxDebugEventBytes is
+// discarded instead of being buffered, so a payload such as an image result
+// cannot grow the log buffer.
+func (w *debugResponseWriter) consumeEvents(data []byte) {
+	for len(data) > 0 {
+		if w.skip {
+			end := bytes.Index(data, []byte("\n\n"))
+			if end < 0 {
+				return
+			}
+			w.skip = false
+			data = data[end+2:]
+			continue
+		}
+		room := maxDebugEventBytes - len(w.buf)
+		if room <= 0 {
+			w.buf = nil
+			w.skip = true
+			continue
+		}
+		take := min(len(data), room)
+		w.buf = append(w.buf, data[:take]...)
+		data = data[take:]
+		for {
+			end := bytes.Index(w.buf, []byte("\n\n"))
+			if end < 0 {
+				break
+			}
+			logReturnedCall(w.buf[:end])
+			w.buf = w.buf[end+2:]
+		}
+		if len(w.buf) >= maxDebugEventBytes {
+			w.buf = nil
+			w.skip = true
+		}
+	}
+}
+
+func (w *debugResponseWriter) Flush() {
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func logReturnedCall(event []byte) {
+	line := event
+	if data := bytes.Index(event, []byte("data:")); data >= 0 {
+		line = event[data+len("data:"):]
+	}
+	var decoded struct {
+		Type string `json:"type"`
+		Item struct {
+			Type      string `json:"type"`
+			Name      string `json:"name"`
+			Namespace string `json:"namespace"`
+		} `json:"item"`
+	}
+	if json.Unmarshal(line, &decoded) != nil || decoded.Type != "response.output_item.done" {
+		return
+	}
+	log.Printf("router-debug returned-item: type=%s name=%s namespace=%s", decoded.Item.Type, decoded.Item.Name, decoded.Item.Namespace)
+}
+
+func withDebugResponse(w http.ResponseWriter, serve func(http.ResponseWriter)) {
+	if !debugToolsEnabled() {
+		serve(w)
+		return
+	}
+	serve(&debugResponseWriter{ResponseWriter: w})
 }
 
 func logToolShapes(stage string, body []byte) {

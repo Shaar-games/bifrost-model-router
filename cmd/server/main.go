@@ -64,6 +64,13 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	staged, err := os.ReadFile(runtimeConfig)
+	if err != nil {
+		return fmt.Errorf("read staged config: %w", err)
+	}
+	if err := runtimeconfig.ReconcileVirtualKeyIDs(filepath.Join(*appDir, "config.db"), staged); err != nil {
+		return err
+	}
 	if err := bifrostserver.RegisterStaticPlugin(routerplugin.Name, func(_ context.Context, raw any, _ *lib.Config) (schemas.BasePlugin, error) {
 		return routerplugin.New(raw)
 	}); err != nil {

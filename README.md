@@ -72,8 +72,13 @@ See [architecture](docs/architecture.md),
 
 ## Development
 
-The host and plugin are built together with Go 1.27 and Bifrost core v1.9.0 to
-preserve Go plugin ABI compatibility.
+The host and plugin are built together with Go 1.27. This repository
+officially builds against the Bifrost fork
+[Shaar-games/bifrost](https://github.com/Shaar-games/bifrost), not the
+published `maximhq/bifrost` modules. `go.mod` replaces `core` and
+`transports` with that fork so Codex MCP namespace tools survive the
+Responses-to-Chat conversion. A build that drops those `replace` lines
+drops MCP tools.
 
 ```sh
 nix develop
@@ -90,4 +95,6 @@ or the Codex provider profile.
 
 Licensed under the [Apache License 2.0](LICENSE). This project is built heavily
 on [Bifrost](https://github.com/maximhq/bifrost), copyright H3 Labs Inc. and
-licensed under Apache 2.0. See [NOTICE](NOTICE) for attribution details.
+licensed under Apache 2.0. The supported core is the
+[Shaar-games/bifrost](https://github.com/Shaar-games/bifrost) fork of that
+project. See [NOTICE](NOTICE) for attribution details.

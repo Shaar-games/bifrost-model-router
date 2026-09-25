@@ -137,6 +137,21 @@ func bridgeTestConfig(t *testing.T, overrides map[string]config.HostedToolPolicy
 	return cfg
 }
 
+func TestDefaultBridgeKeepsRequestAndStripsOtherHostedTools(t *testing.T) {
+	cfg := fallbackTestConfig(t)
+	cfg.HostedToolPolicy = config.HostedToolBridge
+	if err := cfg.ApplyDefaultsAndValidate(); err != nil {
+		t.Fatal(err)
+	}
+	routing, err := RouteHostedTools([]byte(`{"model":"managed/text-model","tools":[{"type":"web_search"},{"type":"file_search"}]}`), cfg)
+	if err != nil || routing.Fallback != nil || len(routing.Bridges) != 1 || routing.Bridges[0] != "web_search" {
+		t.Fatalf("routing = %#v err = %v", routing, err)
+	}
+	if strings.Contains(string(routing.Body), "file_search") {
+		t.Fatalf("file_search survived: %s", routing.Body)
+	}
+}
+
 func TestRouteHostedToolsBridgesConfiguredTools(t *testing.T) {
 	cfg := bridgeTestConfig(t, map[string]config.HostedToolPolicy{"web_search": config.HostedToolBridge, "image_generation": config.HostedToolBridge})
 	body := []byte(`{"model":"managed/text-model","input":"hi","tool_choice":{"type":"web_search_preview"},"tools":[{"type":"function","name":"shell"},{"type":"web_search_preview"},{"type":"image_generation"},{"type":"code_interpreter"}]}`)

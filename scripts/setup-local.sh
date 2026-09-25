@@ -31,7 +31,7 @@ Options:
   --model MODEL                  Default Codex model
   --reasoning-effort EFFORT      minimal, low, medium, high, or xhigh
   --image IMAGE                  OCI image override
-  --hosted-tool-policy POLICY    fallback, strip, or reject for polyfilled models
+  --hosted-tool-policy POLICY    fallback, strip, reject, or bridge for polyfilled models
   --accept-plaintext-key         Accept the local virtual-key notice
   --accept-new-threads-only      Accept that defaults affect new threads only
   --replace                      Replace existing quickstart containers
@@ -55,9 +55,9 @@ parse_args() {
 			--image) image_name="$2" ;;
 			--hosted-tool-policy)
 				case "$2" in
-				fallback | strip | reject) hosted_tool_policy="$2" ;;
+				fallback | strip | reject | bridge) hosted_tool_policy="$2" ;;
 				*)
-					printf 'error: --hosted-tool-policy must be fallback, strip, or reject\n' >&2
+					printf 'error: --hosted-tool-policy must be fallback, strip, reject, or bridge\n' >&2
 					exit 2
 					;;
 				esac

@@ -51,10 +51,10 @@ var BridgeableHostedTools = []string{"image_generation", "web_search"}
 
 func ParseHostedToolPolicy(value string) (HostedToolPolicy, error) {
 	switch policy := HostedToolPolicy(strings.ToLower(strings.TrimSpace(value))); policy {
-	case HostedToolFallback, HostedToolStrip, HostedToolReject:
+	case HostedToolFallback, HostedToolStrip, HostedToolReject, HostedToolBridge:
 		return policy, nil
 	default:
-		return "", fmt.Errorf("hosted_tool_policy %q must be one of fallback, strip, reject", value)
+		return "", fmt.Errorf("hosted_tool_policy %q must be one of fallback, strip, reject, bridge", value)
 	}
 }
 
@@ -77,7 +77,7 @@ func (c Config) HostedToolPolicyFor(toolType string) HostedToolPolicy {
 }
 
 func (c Config) needsHostedToolModel() bool {
-	if c.HostedToolPolicy == HostedToolFallback {
+	if c.HostedToolPolicy == HostedToolFallback || c.HostedToolPolicy == HostedToolBridge {
 		return true
 	}
 	for _, policy := range c.HostedToolOverrides {
@@ -368,6 +368,9 @@ func (c *Config) ApplyDefaultsAndValidate() error {
 		c.HostedToolFallbackModel = fallback.Slug
 	}
 	if c.HostedToolFallbackModel == "" {
+		if c.HostedToolPolicy == HostedToolBridge {
+			return fmt.Errorf("hosted_tool_policy %q requires a resolvable hosted_tool_fallback_model", c.HostedToolPolicy)
+		}
 		for tool, policy := range c.HostedToolOverrides {
 			if policy == HostedToolBridge || policy == HostedToolFallback {
 				return fmt.Errorf("hosted_tool_overrides %q requires a resolvable hosted_tool_fallback_model", tool)

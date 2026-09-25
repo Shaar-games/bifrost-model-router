@@ -63,7 +63,9 @@ func New(cfg config.Config, bifrostURL, chatGPTURL string) (*Handler, error) {
 func (h *Handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	switch {
 	case req.Method == http.MethodPost && req.URL.Path == "/v1/responses":
-		withDebugErrors(req.URL.Path, w, func(w http.ResponseWriter) { h.serveResponses(w, req) })
+		withDebugErrors(req.URL.Path, w, func(w http.ResponseWriter) {
+			withDebugResponse(w, func(w http.ResponseWriter) { h.serveResponses(w, req) })
+		})
 	case req.Method == http.MethodPost && req.URL.Path == "/v1/images/generations":
 		h.serveImageGeneration(w, req)
 	case req.Method == http.MethodGet && req.URL.Path == "/v1/models" && req.URL.Query().Get("client_version") != "":
