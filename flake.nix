@@ -587,7 +587,6 @@
               gotestsum
               golangci-lint
               govulncheck
-              just
               jq
               yq-go
               shellcheck

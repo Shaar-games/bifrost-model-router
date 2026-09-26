@@ -5,6 +5,47 @@ Responses requests pass through unchanged; Chat Completions-only models are
 translated by Bifrost. Codex's OpenAI credential is forwarded only to declared
 OpenAI routes and is stripped from every managed-provider route.
 
+## Install
+
+The program that serves Codex is one native binary. It embeds Bifrost and the
+gateway. Install a published build; Go, Nix, and Docker are not required to
+run it.
+
+Windows (PowerShell, not as administrator):
+
+```powershell
+$script = Join-Path $env:TEMP "setup-binary.ps1"
+Invoke-WebRequest -Uri "https://github.com/Shaar-games/bifrost-model-router/releases/latest/download/setup-binary.ps1" -OutFile $script
+powershell -NoProfile -ExecutionPolicy Bypass -File $script
+```
+
+Linux:
+
+```sh
+curl -fsSL https://github.com/Shaar-games/bifrost-model-router/releases/latest/download/setup-binary.sh | bash
+```
+
+From a clone of this repository, the same scripts are `scripts/setup-binary.ps1`
+and `scripts/setup-binary.sh`.
+
+The script picks the binary for this machine, checks its SHA-256, and installs
+it for the current user. It starts the router only when a config file already
+exists:
+
+- Windows: `%APPDATA%\bifrost-model-router\config.json`, listening on
+  `127.0.0.1:80`. Codex keeps `base_url = "http://127.0.0.1/v1"`. A Startup
+  shortcut launches it at login.
+- Linux: `~/.config/bifrost-model-router/config.json`, listening on
+  `127.0.0.1:8080` because port 80 is privileged. Set the Codex provider
+  `base_url` to `http://127.0.0.1:8080/v1`. A systemd user service starts it
+  at login. Pass `--address 127.0.0.1:80` when that port is available.
+
+Provider credentials stay in `providers.env` next to that config. The scripts
+do not create or print them. The published builds cover Windows and Linux,
+amd64 and arm64. macOS binaries are not in the release. On a Mac, run
+`mise run build:darwin`, then start `dist/darwin-arm64/bifrost-model-router-server`
+or the Intel binary with `-addr 127.0.0.1:8080`.
+
 ## Set up with Codex
 
 Open this repository in Codex and ask it to set up the router. You do not need
@@ -24,8 +65,9 @@ OpenAI through the existing Codex login is always retained. Codex detects and
 merges an existing router setup automatically, and defaults new threads to
 `gpt-5.6-sol` with `medium` reasoning unless you explicitly request otherwise.
 
-Codex handles the public GHCR image, Docker, router configuration, catalog
-policy, validation, backups, and Codex settings. Nix is not required for setup.
+Codex writes the router configuration, catalog policy, backups, and Codex
+settings. Run the installed native binary from the section above; Nix and
+Docker are not required to serve Codex.
 The only required secret-handling step is filling the credential placeholders
 it creates in the mode-`0600` file
 `~/.config/bifrost-model-router/providers.env`; credentials are never pasted
@@ -80,16 +122,25 @@ published `maximhq/bifrost` modules. `go.mod` replaces `core` and
 Responses-to-Chat conversion. A build that drops those `replace` lines
 drops MCP tools.
 
+Development tasks live in `mise.toml`. Install [mise](https://mise.jdx.dev),
+then from this repository:
+
 ```sh
-nix develop
-just test
-just check-config
-nix build .#default
+mise install
+mise run check
+mise run build
 ```
 
-Run `nix flake check -L` for the complete validation suite. Provider secrets
-are runtime inputs; never add them to Nix expressions, tracked configuration,
-or the Codex provider profile.
+`mise run check` formats nothing by itself: it runs `vet` and `go test ./...`.
+`mise run build` writes this machine's server, gateway, and mock provider to
+`dist/native/`. `mise run build:all` cross-compiles the native server for
+Windows and Linux. macOS builds (`mise run build:darwin`) need a Mac with
+Xcode, because cgo requires the Apple SDK. `mise tasks` lists the rest,
+including `fmt`, `run`, `mock`, and the Windows `install` and `restart` tasks.
+
+`nix develop` still provides Go and the Nix checks. `nix flake check -L` runs
+the complete validation suite. Provider secrets are runtime inputs; never add
+them to Nix expressions, tracked configuration, or the Codex provider profile.
 
 ## License and attribution
 

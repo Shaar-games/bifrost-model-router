@@ -6,33 +6,48 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  package:
+  binaries:
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@8d87e8d5e5b8a8309d4281094560f127d9a265f1 # v3
-      - name: Test exact tag
-        run: nix flake check --no-update-lock-file --print-build-logs
-      - name: Export closure and compatibility metadata
+      - name: Install mise
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      - name: Build native servers
+        run: mise run build:all
+      - name: Pack release assets
         run: |
-          nix build .#default --out-link result
-          mkdir -p dist
-          nix copy --to file://"$PWD/dist/nix-store" .#default
-          nix path-info --json --closure .#default >dist/closure.json
-          cp flake.lock config/router.schema.json dist/
-          tar -C dist -czf bifrost-model-router-${GITHUB_REF_NAME}.tar.gz .
-          sha256sum bifrost-model-router-${GITHUB_REF_NAME}.tar.gz >checksums.txt
-      - name: Upload reproducible release closure
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
-        with:
-          name: bifrost-model-router-${{ github.ref_name }}
-          path: |
-            bifrost-model-router-*.tar.gz
-            checksums.txt
-          if-no-files-found: error
+          mkdir -p dist/release
+          cp dist/windows-amd64/bifrost-model-router-server.exe dist/release/bifrost-model-router-server-windows-amd64.exe
+          cp dist/windows-arm64/bifrost-model-router-server.exe dist/release/bifrost-model-router-server-windows-arm64.exe
+          cp dist/linux-amd64/bifrost-model-router-server dist/release/bifrost-model-router-server-linux-amd64
+          cp dist/linux-arm64/bifrost-model-router-server dist/release/bifrost-model-router-server-linux-arm64
+          cp scripts/setup-binary.ps1 scripts/setup-binary.sh dist/release/
+          (
+            cd dist/release
+            sha256sum \
+              bifrost-model-router-server-windows-amd64.exe \
+              bifrost-model-router-server-windows-arm64.exe \
+              bifrost-model-router-server-linux-amd64 \
+              bifrost-model-router-server-linux-arm64 \
+              setup-binary.ps1 \
+              setup-binary.sh \
+              > SHA256SUMS
+          )
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/release/* --clobber
+          else
+            gh release create "$tag" dist/release/* \
+              --title "$tag" \
+              --notes "Native server binaries for Windows and Linux. Install with setup-binary.ps1 or setup-binary.sh."
+          fi
