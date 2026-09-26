@@ -25,16 +25,14 @@ Unknown, missing, or ambiguous models fail closed. Bifrost must be configured
 with `allow_direct_keys: true`, no stored OpenAI key, content logging disabled,
 and provider credentials referenced through runtime environment variables.
 
-For agent-managed local setup, provider credentials live only in
-`~/.config/bifrost-model-router/providers.env`. The setup executor requires
-that file to be a regular, non-symlink file inaccessible to group and other
-users, passes it only to the Bifrost core container, and copies no provider
-secret into the Docker-readable runtime config or Codex configuration.
+Provider credentials live only in `providers.env` next to `config.json`
+(`%APPDATA%\bifrost-model-router` on Windows, `~/.config/bifrost-model-router`
+on Linux). That file must be a regular, non-symlink file inaccessible to group
+and other users. The server reads it into the process environment and copies
+no provider secret into Codex configuration.
 
-The NixOS module binds to loopback by default, uses a dynamic user, a private
-temporary directory, an explicit state directory, no capabilities, a strict
-read-only system, and systemd `LoadCredential`. It reads each credential into
-the named provider environment variable only in the service process.
+The native server binds to loopback. Windows listens on `127.0.0.1:80`. Linux
+listens on `127.0.0.1:8080` unless the setup script is given another address.
 
 The Codex profile editor rejects symlinks and special files, writes through a
 same-directory atomic rename, preserves restrictive modes, and creates a

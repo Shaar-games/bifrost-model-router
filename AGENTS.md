@@ -2,7 +2,7 @@
 
 When a user asks to set up, configure, add, remove, update, or troubleshoot
 Bifrost Model Router, own the requirements gathering and implementation. Do not
-require the user to understand Bifrost JSON, Docker networking, adapters, model
+require the user to understand Bifrost JSON, adapters, model
 catalogs, or Codex provider configuration.
 
 ## Conversation contract
@@ -20,8 +20,9 @@ catalogs, or Codex provider configuration.
   models before showing them what their account can access.
 - Always retain OpenAI through the user's Codex login. This is an invariant,
   not a requirements question.
-- Inspect `~/.config/bifrost-model-router`, the managed Codex block, and the
-  named Docker containers to detect first-time versus additive setup. Preserve
+- Inspect the platform config directory, the managed Codex block, and whether
+  the native server is already running to detect first-time versus additive
+  setup. Preserve
   existing providers, credentials, and model entries by default. Ask only if
   the user explicitly requests removal or discovered state is contradictory.
 - Treat the virtual key currently stored in the active Codex provider block as
@@ -91,8 +92,13 @@ the Bifrost JSON, or place it in `~/.codex/config.toml`.
 Create these local files outside the repository:
 
 ```text
+# Linux
 ~/.config/bifrost-model-router/config.json
 ~/.config/bifrost-model-router/providers.env
+
+# Windows
+%APPDATA%\bifrost-model-router\config.json
+%APPDATA%\bifrost-model-router\providers.env
 ```
 
 Create `providers.env` with mode `0600` and one empty assignment for each
@@ -109,8 +115,8 @@ non-empty; never print their values. Preserve existing credential entries when
 adding another provider.
 
 Provider keys in `config.json` must use `env.NAME` references matching this env
-file. The setup script rejects literal provider credentials and env files that
-are accessible by group or other users.
+file. Reject literal provider credentials and env files that are accessible
+by group or other users.
 
 ## Configuration invariants
 
@@ -239,32 +245,31 @@ OpenAI passthrough remains enabled and that the default is `gpt-5.6-sol` with
 Tell the user that the local Bifrost virtual key is stored in their mode-`0600`
 Codex config and that provider/model defaults affect only new threads.
 
-Then run the low-level executor non-interactively:
+Then install the published native server. Do not use Docker or a container
+image.
 
-```sh
-./scripts/setup-local.sh \
-  --config "$HOME/.config/bifrost-model-router/config.json" \
-  --env-file "$HOME/.config/bifrost-model-router/providers.env" \
-  --accept-plaintext-key \
-  --accept-new-threads-only \
-  --replace
+On Windows, not as administrator:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-binary.ps1
 ```
 
-The executor pulls the public
-`ghcr.io/applyinnovations/bifrost-model-router:main` image by default; local Nix
-and the Codex CLI are not required for Desktop users. Use an image override
-only when the user explicitly requests another published build.
+On Linux:
 
-Omit `--env-file` only when the generated config has no managed-provider
-credential references. Do not pass `--replace` unless the existing named
-containers belong to this project; inspect them first. The setup script backs
-up and preserves unrelated Codex configuration. Its defaults are
-`gpt-5.6-sol` and `medium`; pass `--model` or `--reasoning-effort` only for an
-explicit user override or verified availability fallback.
+```sh
+bash scripts/setup-binary.sh
+```
+
+The script downloads the release binary for that machine, checks its SHA-256,
+and starts the server when `config.json` already exists. Windows listens on
+`127.0.0.1:80`. Linux listens on `127.0.0.1:8080`, so the Codex provider
+`base_url` is `http://127.0.0.1:8080/v1`. Install the Codex provider block with
+`router profile install`; it backs up the existing Codex config.
 
 ## Verification and handoff
 
-1. Verify both containers are running and `http://127.0.0.1/health` succeeds.
+1. Verify `http://127.0.0.1/health` on Windows, or `http://127.0.0.1:8080/health`
+   on Linux.
 2. Read the virtual key from the installed Codex provider block without
    printing it, then use that exact key to verify the hydrated model catalog
    contains exactly the enabled model set. Do not substitute a bootstrap or

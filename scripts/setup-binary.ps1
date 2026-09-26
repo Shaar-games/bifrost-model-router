@@ -9,6 +9,7 @@ SHA-256, and installs it under %LOCALAPPDATA%\bifrost-model-router. When
 a Startup shortcut and waits until http://<address>/health succeeds. It does
 not create or print provider credentials. Do not run it as administrator.
 #>
+& {
 param(
 	[string]$Version = "latest",
 	[string]$Address = "127.0.0.1:80",
@@ -83,7 +84,7 @@ try {
 	if (-not (Test-Path -LiteralPath $configFile)) {
 		Write-Host "Installed $binary"
 		Write-Host "Create $configFile, then run this script again to start the router."
-		exit 0
+		return
 	}
 
 	@"
@@ -111,14 +112,14 @@ shell.Run command, 0, False
 			if ((Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200) {
 				Write-Host "Installed $binary"
 				Write-Host "Router healthy at $healthUrl"
-				exit 0
+				return
 			}
 		} catch {
 			Start-Sleep -Seconds 1
 		}
 	}
-	Write-Error "Router did not become healthy; see $(Join-Path $installDir 'router.log')"
-	exit 1
+	throw "Router did not become healthy; see $(Join-Path $installDir 'router.log')"
 } finally {
 	Remove-Item -Recurse -Force -LiteralPath $tempDir -ErrorAction SilentlyContinue
+}
 }

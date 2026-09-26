@@ -14,9 +14,7 @@ run it.
 Windows (PowerShell, not as administrator):
 
 ```powershell
-$script = Join-Path $env:TEMP "setup-binary.ps1"
-Invoke-WebRequest -Uri "https://github.com/Shaar-games/bifrost-model-router/releases/latest/download/setup-binary.ps1" -OutFile $script
-powershell -NoProfile -ExecutionPolicy Bypass -File $script
+iex (irm "https://github.com/Shaar-games/bifrost-model-router/releases/latest/download/setup-binary.ps1")
 ```
 
 Linux:
@@ -69,8 +67,9 @@ Codex writes the router configuration, catalog policy, backups, and Codex
 settings. Run the installed native binary from the section above; Nix and
 Docker are not required to serve Codex.
 The only required secret-handling step is filling the credential placeholders
-it creates in the mode-`0600` file
-`~/.config/bifrost-model-router/providers.env`; credentials are never pasted
+it creates in the mode-`0600` file `providers.env` next to `config.json`
+(`%APPDATA%\bifrost-model-router` on Windows,
+`~/.config/bifrost-model-router` on Linux); credentials are never pasted
 into chat or stored in the repository.
 
 After setup, fully quit and reopen Codex, then create a new task. Existing

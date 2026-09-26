@@ -16,17 +16,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  macos-setup:
-    runs-on: macos-15
-    timeout-minutes: 10
-    steps:
-      - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install jq
-        run: command -v jq >/dev/null || brew install jq
-      - name: Test setup with macOS system Bash
-        run: /bin/bash scripts/setup-local-test.sh
-
   flake:
     runs-on: ubuntu-24.04
     timeout-minutes: 45

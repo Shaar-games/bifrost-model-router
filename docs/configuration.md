@@ -135,9 +135,7 @@ gateway removes them from later polyfilled requests.
 Precedence for one request is `reject`, then `fallback`, then `bridge` and
 `strip` per tool. A fallback model is resolved only when some policy uses it;
 otherwise `hosted_tool_fallback_model` must be omitted, which also disables
-the Images API bridge. The Docker gateway accepts a `HOSTED_TOOL_POLICY`
-environment override of the default policy (`setup-local.sh
---hosted-tool-policy`) for core images that predate these fields.
+the Images API bridge.
 
 `namespace` is not considered hosted. Bifrost flattens namespace members into
 ordinary function tools for providers without native namespace support and
