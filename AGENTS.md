@@ -263,8 +263,10 @@ bash scripts/setup-binary.sh
 The script downloads the release binary for that machine, checks its SHA-256,
 and starts the server when `config.json` already exists. Windows listens on
 `127.0.0.1:80`. Linux listens on `127.0.0.1:8080`, so the Codex provider
-`base_url` is `http://127.0.0.1:8080/v1`. Install the Codex provider block with
-`router profile install`; it backs up the existing Codex config.
+`base_url` is `http://127.0.0.1:8080/v1`. The script prints a follow-up command
+that writes the Codex provider block into `config.toml` and keeps a backup.
+Run that command. It reads the virtual key from `providers.env` and must not
+print it. Fully quit and reopen Codex after it.
 
 ## Verification and handoff
 

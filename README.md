@@ -31,6 +31,14 @@ it for the current user. It starts the router only when a config file already
 exists. Once it is running, saving `config.json` or `providers.env` restarts
 the server on its own.
 
+Installing the binary does not point Codex at the router. The script prints
+one follow-up command that writes the `bifrost-router` provider into the Codex
+user config (`%USERPROFILE%\.codex\config.toml` on Windows,
+`~/.codex/config.toml` on Linux). That command keeps a backup, reads the
+virtual key from `providers.env` without printing it, and leaves an existing
+`bifrost-router` provider for the same address unchanged. Fully quit Codex and
+open a new task after it. Existing tasks keep their previous provider.
+
 - Windows: `%APPDATA%\bifrost-model-router\config.json`, listening on
   `127.0.0.1:80`. Codex keeps `base_url = "http://127.0.0.1/v1"`. A Startup
   shortcut launches it at login.
