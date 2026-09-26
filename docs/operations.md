@@ -15,6 +15,10 @@ Windows listens on `127.0.0.1:80`. Linux listens on `127.0.0.1:8080`. Keep the
 process on loopback. Put a TLS terminator in front of it before exposing it
 to another machine.
 
+The running server watches `config.json` and `providers.env`. After a save
+settles, it restarts and keeps the same address. The configuration files
+themselves are left unchanged.
+
 ## Health and verification
 
 - `GET /health` verifies that the server is accepting requests.

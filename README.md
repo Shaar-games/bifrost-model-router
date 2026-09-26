@@ -28,7 +28,8 @@ and `scripts/setup-binary.sh`.
 
 The script picks the binary for this machine, checks its SHA-256, and installs
 it for the current user. It starts the router only when a config file already
-exists:
+exists. Once it is running, saving `config.json` or `providers.env` restarts
+the server on its own.
 
 - Windows: `%APPDATA%\bifrost-model-router\config.json`, listening on
   `127.0.0.1:80`. Codex keeps `base_url = "http://127.0.0.1/v1"`. A Startup

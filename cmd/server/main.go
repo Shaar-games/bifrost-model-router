@@ -32,16 +32,39 @@ var uiContent embed.FS
 var version = "dev"
 
 func main() {
-	if err := run(); err != nil {
+	opts, err := parseFlags()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "bifrost-model-router:", err)
+		os.Exit(1)
+	}
+	if os.Getenv(supervisedEnv) == "1" {
+		if err := run(opts); err != nil {
+			fmt.Fprintln(os.Stderr, "bifrost-model-router:", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if err := supervise(opts.configPath, opts.envPath); err != nil {
 		fmt.Fprintln(os.Stderr, "bifrost-model-router:", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+type serverOptions struct {
+	configPath string
+	envPath    string
+	appDir     string
+	addr       string
+	coreHost   string
+	corePort   string
+	chatGPTURL string
+	logLevel   string
+}
+
+func parseFlags() (serverOptions, error) {
 	defaults, err := defaultOptions()
 	if err != nil {
-		return err
+		return serverOptions{}, err
 	}
 	configPath := flag.String("config", defaults.configPath, "declarative Bifrost configuration")
 	envPath := flag.String("env-file", defaults.envPath, "provider credential environment file")
@@ -52,15 +75,36 @@ func run() error {
 	chatGPTURL := flag.String("chatgpt-upstream", "https://chatgpt.com", "ChatGPT upstream origin")
 	logLevel := flag.String("log-level", "info", "debug, info, warn, or error")
 	flag.Parse()
+	return serverOptions{
+		configPath: *configPath,
+		envPath:    *envPath,
+		appDir:     *appDir,
+		addr:       *addr,
+		coreHost:   *coreHost,
+		corePort:   *corePort,
+		chatGPTURL: *chatGPTURL,
+		logLevel:   *logLevel,
+	}, nil
+}
 
-	if *envPath != "" {
-		if err := envfile.Load(*envPath); err != nil {
+func run(opts serverOptions) error {
+	envPath := opts.envPath
+	configPath := opts.configPath
+	appDir := opts.appDir
+	addr := opts.addr
+	coreHost := opts.coreHost
+	corePort := opts.corePort
+	chatGPTURL := opts.chatGPTURL
+	logLevel := opts.logLevel
+
+	if envPath != "" {
+		if err := envfile.Load(envPath); err != nil {
 			if !errors.Is(err, os.ErrNotExist) {
 				return fmt.Errorf("load provider environment: %w", err)
 			}
 		}
 	}
-	runtimeConfig, err := runtimeconfig.StageStatic(*configPath, *appDir)
+	runtimeConfig, err := runtimeconfig.StageStatic(configPath, appDir)
 	if err != nil {
 		return err
 	}
@@ -68,7 +112,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("read staged config: %w", err)
 	}
-	if err := runtimeconfig.ReconcileVirtualKeyIDs(filepath.Join(*appDir, "config.db"), staged); err != nil {
+	if err := runtimeconfig.ReconcileVirtualKeyIDs(filepath.Join(appDir, "config.db"), staged); err != nil {
 		return err
 	}
 	if err := bifrostserver.RegisterStaticPlugin(routerplugin.Name, func(_ context.Context, raw any, _ *lib.Config) (schemas.BasePlugin, error) {
@@ -77,23 +121,23 @@ func run() error {
 		return err
 	}
 
-	logger := bifrost.NewDefaultLogger(schemas.LogLevel(*logLevel))
+	logger := bifrost.NewDefaultLogger(schemas.LogLevel(logLevel))
 	lib.SetLogger(logger)
 	bifrostserver.SetLogger(logger)
 	handlers.SetLogger(logger)
 
 	core := bifrostserver.NewBifrostHTTPServer(version, uiContent)
-	core.Host = *coreHost
-	core.Port = *corePort
-	core.AppDir = *appDir
-	core.LogLevel = *logLevel
+	core.Host = coreHost
+	core.Port = corePort
+	core.AppDir = appDir
+	core.LogLevel = logLevel
 	if err := core.Bootstrap(context.Background()); err != nil {
 		return fmt.Errorf("bootstrap Bifrost: %w", err)
 	}
 
 	coreErr := make(chan error, 1)
 	go func() { coreErr <- core.Start() }()
-	coreURL := "http://" + *coreHost + ":" + *corePort
+	coreURL := "http://" + coreHost + ":" + corePort
 	if err := waitForHealth(coreURL+"/health", coreErr, 30*time.Second); err != nil {
 		return err
 	}
@@ -103,9 +147,9 @@ func run() error {
 		return err
 	}
 	public, err := gateway.NewServer(cfg, gateway.ServerOptions{
-		Addr:       *addr,
+		Addr:       addr,
 		BifrostURL: coreURL,
-		ChatGPTURL: *chatGPTURL,
+		ChatGPTURL: chatGPTURL,
 	})
 	if err != nil {
 		return err
